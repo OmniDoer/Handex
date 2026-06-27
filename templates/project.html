@@ -403,6 +403,47 @@
   {% endif %}
 </details>
 
+<details class="section-block" id="jobs">
+  <summary>Background Jobs</summary>
+  {% if background_jobs %}
+    {% for job in background_jobs %}
+      <article class="history-item">
+        <div class="command-meta">
+          <strong>#{{ job.id }} {{ job.tool }}</strong>
+          <span>{{ job.status|upper }}{% if job.exit_code is not none %} / {{ job.exit_code }}{% endif %}</span>
+        </div>
+        <dl class="preview-grid">
+          <div><dt>Mode</dt><dd>{{ job.mode or "-" }}</dd></div>
+          <div><dt>PID</dt><dd>{{ job.pid or "-" }}</dd></div>
+          <div><dt>CWD</dt><dd>{{ job.cwd or "-" }}</dd></div>
+          <div><dt>Command</dt><dd><code>{{ job.final_command or "-" }}</code></dd></div>
+        </dl>
+        {% if job.status not in ["completed", "failed", "stopped", "lost"] %}
+          <form method="post" action="/projects/{{ project.id }}/jobs/{{ job.id }}/stop">
+            <button class="danger" type="submit">Stop Job</button>
+          </form>
+        {% endif %}
+        {% if job.stdout %}
+          <label>
+            STDOUT Tail
+            <textarea id="job-{{ job.id }}-stdout" class="mono medium" readonly>{{ job.stdout }}</textarea>
+          </label>
+          <button type="button" class="secondary small copy-target" data-target="job-{{ job.id }}-stdout">Copy STDOUT</button>
+        {% endif %}
+        {% if job.stderr %}
+          <label>
+            STDERR Tail
+            <textarea id="job-{{ job.id }}-stderr" class="mono medium" readonly>{{ job.stderr }}</textarea>
+          </label>
+          <button type="button" class="secondary small copy-target" data-target="job-{{ job.id }}-stderr">Copy STDERR</button>
+        {% endif %}
+      </article>
+    {% endfor %}
+  {% else %}
+    <p class="empty">No background jobs yet.</p>
+  {% endif %}
+</details>
+
 <details class="section-block" id="logs">
   <summary>Execution History</summary>
   {% if logs %}

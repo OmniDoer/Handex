@@ -52,3 +52,7 @@ constructing shell commands or embedding credentials in URLs.
 Execution history recovery is exposed through the project page and
 `recent_results`. This lets the LLM or human recover sanitized command JSON,
 stdout, stderr, and Tool Result Prompts when a copy/paste loop is interrupted.
+
+Long-running command support is exposed through `background_shell`,
+`job_status`, and `job_stop`. The prompt tells the LLM to start long commands
+as background jobs, poll output tails, and stop jobs that are no longer useful.

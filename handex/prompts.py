@@ -15,6 +15,7 @@ from .uploads import upload_inventory_prompt
 
 TOOL_NAMES = [
     "shell",
+    "background_shell",
     "python",
     "read_file",
     "write_file",
@@ -37,6 +38,8 @@ TOOL_NAMES = [
     "context_pack",
     "list_uploads",
     "recent_results",
+    "job_status",
+    "job_stop",
     "plugin_list",
     "plugin_run",
 ]
@@ -90,7 +93,7 @@ DEFAULT_TOOL_PROTOCOL = """When you need Linux tools, output exactly one Tool Co
 
 Schema:
 {
-  "tool": "shell | python | read_file | write_file | append_file | replace_file | delete_file | list_files | search_files | grep | git | git_bootstrap | apply_patch | list_skills | read_skill | skill_pack | list_vault_credentials | vault_list | vault_run | capability_report | context_pack | list_uploads | recent_results | plugin_list | plugin_run",
+  "tool": "shell | background_shell | python | read_file | write_file | append_file | replace_file | delete_file | list_files | search_files | grep | git | git_bootstrap | apply_patch | list_skills | read_skill | skill_pack | list_vault_credentials | vault_list | vault_run | capability_report | context_pack | list_uploads | recent_results | job_status | job_stop | plugin_list | plugin_run",
   "args": {},
   "cwd": ".",
   "mode": "safe",
@@ -99,6 +102,9 @@ Schema:
 
 Examples:
 {"tool":"shell","args":{"command":"pwd && ls -la"},"cwd":".","mode":"safe","reason":"inspect workspace"}
+{"tool":"background_shell","args":{"command":"pytest -q"},"cwd":".","mode":"safe","reason":"run a longer command without blocking the browser request"}
+{"tool":"job_status","args":{"job_id":1,"max_chars":12000},"mode":"safe","reason":"poll a background command"}
+{"tool":"job_stop","args":{"job_id":1},"mode":"safe","reason":"stop a background command that is no longer needed"}
 {"tool":"read_file","args":{"path":"README.md"},"mode":"safe","reason":"read project docs"}
 {"tool":"write_file","args":{"path":"notes.txt","content":"hello\\n"},"mode":"safe","reason":"create a note"}
 {"tool":"git","args":{"args":["status","--short"]},"cwd":".","mode":"safe","reason":"inspect git status"}
@@ -189,6 +195,7 @@ Operating rules:
 - Prefer Safe Mode. Request YOLO Mode only when it is necessary and explain why.
 - Never say a command ran until Handex returns Tool Result.
 - Keep secrets out of chat. Vault access is metadata-only unless the human explicitly runs a local Vault-backed command after review.
+- Use background_shell for commands that may run long, then poll with job_status; stop unneeded jobs with job_stop.
 - Use Handex skills by listing configured skill roots first, then reading only the relevant SKILL.md instructions.
 - Use git_bootstrap to clone a repository only when the workspace is empty and the URL has no embedded credentials.
 - Use context_pack for Codex-style workspace orientation when Git status, AGENTS.md, manifests, or the file tree may matter.

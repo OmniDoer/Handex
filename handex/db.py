@@ -79,6 +79,24 @@ def init_db() -> None:
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS background_jobs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                tool TEXT NOT NULL DEFAULT 'background_shell',
+                mode TEXT NOT NULL DEFAULT 'safe',
+                command_json TEXT NOT NULL DEFAULT '',
+                final_command TEXT NOT NULL DEFAULT '',
+                cwd TEXT NOT NULL DEFAULT '',
+                pid INTEGER,
+                status TEXT NOT NULL DEFAULT 'running',
+                exit_code INTEGER,
+                stdout_path TEXT NOT NULL DEFAULT '',
+                stderr_path TEXT NOT NULL DEFAULT '',
+                started_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                completed_at TEXT NOT NULL DEFAULT ''
+            );
             """
         )
 
@@ -260,6 +278,81 @@ def list_logs(project_id: int, limit: int = 50) -> list[dict[str, Any]]:
     with connect() as conn:
         rows = conn.execute(
             "SELECT * FROM logs WHERE project_id = ? ORDER BY id DESC LIMIT ?",
+            (project_id, limit),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def find_project_by_workspace(workspace_path: str) -> dict[str, Any] | None:
+    target = str(Path(workspace_path).expanduser().resolve())
+    with connect() as conn:
+        rows = conn.execute("SELECT * FROM projects ORDER BY updated_at DESC, id DESC").fetchall()
+    for row in rows:
+        project = row_dict(row)
+        if not project:
+            continue
+        try:
+            project_workspace = str(Path(project.get("workspace_path") or "").expanduser().resolve())
+        except OSError:
+            continue
+        if project_workspace == target:
+            return project
+    return None
+
+
+def create_background_job(data: dict[str, Any]) -> int:
+    timestamp = now_iso()
+    with connect() as conn:
+        cursor = conn.execute(
+            """
+            INSERT INTO background_jobs (
+                project_id, tool, mode, command_json, final_command, cwd, pid, status,
+                exit_code, stdout_path, stderr_path, started_at, updated_at, completed_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                data["project_id"],
+                data.get("tool", "background_shell"),
+                data.get("mode", "safe"),
+                data.get("command_json", ""),
+                data.get("final_command", ""),
+                data.get("cwd", ""),
+                data.get("pid"),
+                data.get("status", "running"),
+                data.get("exit_code"),
+                data.get("stdout_path", ""),
+                data.get("stderr_path", ""),
+                data.get("started_at") or timestamp,
+                data.get("updated_at") or timestamp,
+                data.get("completed_at") or "",
+            ),
+        )
+        return int(cursor.lastrowid)
+
+
+def update_background_job(job_id: int, data: dict[str, Any]) -> None:
+    if not data:
+        return
+    allowed = {"pid", "status", "exit_code", "stdout_path", "stderr_path", "updated_at", "completed_at"}
+    columns = [key for key in data if key in allowed]
+    if not columns:
+        return
+    values = [data[key] for key in columns]
+    assignments = ", ".join(f"{key} = ?" for key in columns)
+    with connect() as conn:
+        conn.execute(f"UPDATE background_jobs SET {assignments} WHERE id = ?", (*values, job_id))
+
+
+def get_background_job(job_id: int) -> dict[str, Any] | None:
+    with connect() as conn:
+        row = conn.execute("SELECT * FROM background_jobs WHERE id = ?", (job_id,)).fetchone()
+    return dict(row) if row else None
+
+
+def list_background_jobs(project_id: int, limit: int = 20) -> list[dict[str, Any]]:
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM background_jobs WHERE project_id = ? ORDER BY id DESC LIMIT ?",
             (project_id, limit),
         ).fetchall()
     return [dict(row) for row in rows]

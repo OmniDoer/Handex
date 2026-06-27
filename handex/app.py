@@ -33,6 +33,7 @@ from .db import (
     update_project,
 )
 from .history import sanitize_log_for_display
+from .jobs import get_job_display, list_project_job_displays, stop_job
 from .parser import parse_llm_reply
 from .plugins import list_plugins
 from .prompts import (
@@ -137,6 +138,7 @@ def project_page_context(project: dict[str, Any], **extra: Any) -> dict[str, Any
         "max_upload_bytes": settings.max_upload_bytes,
         "summaries": summaries,
         "logs": logs,
+        "background_jobs": list_project_job_displays(int(project["id"]), limit=20, max_chars=8000),
         "skills": list_skills(),
         "plugins": list_plugins(),
         "vault_credentials": vault_credentials,
@@ -337,8 +339,22 @@ def save_project_goal(
 @app.post("/projects/{project_id}/delete")
 def delete_project_route(project_id: int, _: None = Depends(require_auth)) -> RedirectResponse:
     project_or_404(project_id)
+    for job in list_project_job_displays(project_id, limit=50, max_chars=1000):
+        if job.get("status") not in {"completed", "failed", "stopped", "lost"}:
+            stop_job(int(job["id"]))
     delete_project(project_id)
     return redirect("/")
+
+
+@app.post("/projects/{project_id}/jobs/{job_id}/stop")
+def stop_project_job_route(project_id: int, job_id: int, _: None = Depends(require_auth)) -> RedirectResponse:
+    project_or_404(project_id)
+    job = get_job_display(job_id, max_chars=1000)
+    if int(job.get("project_id") or 0) != project_id:
+        raise HTTPException(status_code=404, detail="Background job not found")
+    stop_job(job_id)
+    add_log(project_id, "background_job.stop", stdout=f"Stopped background job #{job_id}")
+    return redirect(f"/projects/{project_id}#jobs")
 
 
 @app.post("/projects/{project_id}/bootstrap/git")

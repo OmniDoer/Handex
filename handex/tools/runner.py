@@ -19,6 +19,7 @@ from ..capabilities import configured_capability_report, list_skills, list_vault
 from ..config import settings
 from ..context import build_context_pack
 from ..history import project_logs_for_workspace
+from ..jobs import get_job_display, list_project_job_displays, project_id_for_workspace, start_background_shell, stop_job
 from ..plugins import find_plugin, list_plugins, plugin_argv
 from ..prompts import TOOL_SCHEMA
 from ..uploads import list_workspace_uploads
@@ -176,7 +177,7 @@ def validate_preview(command: dict[str, Any], workspace: Path, cwd: Path, mode: 
         warnings.append(f"Unsupported built-in tool: {tool}")
     if mode == "safe" and not is_relative_to(cwd, workspace):
         warnings.append("Safe Mode requires cwd inside workspace.")
-    if tool == "shell" and mode == "safe":
+    if tool in {"shell", "background_shell"} and mode == "safe":
         warnings.extend(validate_safe_shell(str(command_args(command).get("command") or command.get("command") or "")))
     return warnings
 
@@ -262,6 +263,8 @@ def preview_command(command: dict[str, Any]) -> str:
     tool = str(command.get("tool") or "")
     if tool == "shell":
         return str(args.get("command") or command.get("command") or "")
+    if tool == "background_shell":
+        return str(args.get("command") or command.get("command") or "")
     if tool == "python":
         code = str(args.get("code") or command.get("code") or "")
         return f"{sys.executable} -c {shlex.quote(code[:500])}"
@@ -276,8 +279,10 @@ def preview_command(command: dict[str, Any]) -> str:
         return f"{tool} {args.get('path') or args.get('root') or '.'}"
     if tool == "read_skill":
         return f"read_skill {args.get('skill_id') or args.get('name') or ''}"
-    if tool in {"list_skills", "skill_pack", "list_vault_credentials", "vault_list", "capability_report", "context_pack", "list_uploads", "recent_results", "plugin_list"}:
+    if tool in {"list_skills", "skill_pack", "list_vault_credentials", "vault_list", "capability_report", "context_pack", "list_uploads", "recent_results", "job_status", "plugin_list"}:
         return tool
+    if tool == "job_stop":
+        return f"job_stop {args.get('job_id') or args.get('id') or ''}"
     if tool == "plugin_run":
         return f"plugin_run {args.get('plugin_id') or args.get('id') or args.get('name') or ''}"
     if tool == "vault_run":
@@ -361,6 +366,27 @@ def run_shell(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult
         if warnings:
             raise ToolError("; ".join(warnings))
     return subprocess_result(command=command, tool="shell", mode=mode, cwd=cwd, final_command=command_text, shell=True)
+
+
+def run_background_shell(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    cwd = resolve_cwd(command, workspace, mode)
+    command_text = str(command_args(command).get("command") or command.get("command") or "")
+    if not command_text.strip():
+        raise ToolError("background_shell args.command is required")
+    if mode == "safe":
+        warnings = validate_safe_shell(command_text)
+        if warnings:
+            raise ToolError("; ".join(warnings))
+    job = start_background_shell(
+        workspace=workspace,
+        cwd=cwd,
+        mode=mode,
+        command=command,
+        command_text=command_text,
+        final_command=command_text,
+    )
+    output = json.dumps(job, ensure_ascii=False, indent=2)
+    return ToolResult("background_shell", command, mode, str(cwd), command_text, 0, output + "\n", "")
 
 
 def run_python(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
@@ -756,6 +782,54 @@ def run_recent_results(command: dict[str, Any], workspace: Path, mode: str) -> T
     return ToolResult("recent_results", command, mode, str(workspace), "recent_results", 0, output + "\n", "")
 
 
+def ensure_job_belongs_to_workspace(job: dict[str, Any], workspace: Path) -> None:
+    project_id = project_id_for_workspace(workspace)
+    if int(job.get("project_id") or 0) != project_id:
+        raise ToolError(f"Background job does not belong to this workspace: {job.get('id')}")
+
+
+def run_job_status(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    args = command_args(command)
+    try:
+        max_chars = int(args.get("max_chars") or settings.max_output_chars)
+    except (TypeError, ValueError):
+        max_chars = settings.max_output_chars
+    max_chars = max(1000, min(max_chars, settings.max_output_chars))
+    identifier = args.get("job_id") or args.get("id")
+    if identifier:
+        try:
+            job = get_job_display(int(identifier), max_chars=max_chars)
+        except (TypeError, ValueError) as exc:
+            raise ToolError("job_status args.job_id must be an integer") from exc
+        ensure_job_belongs_to_workspace(job, workspace)
+        payload: Any = job
+    else:
+        try:
+            limit = int(args.get("limit") or 10)
+        except (TypeError, ValueError):
+            limit = 10
+        project_id = project_id_for_workspace(workspace)
+        payload = list_project_job_displays(project_id, limit=max(1, min(limit, 50)), max_chars=max_chars)
+    output = json.dumps(payload, ensure_ascii=False, indent=2)
+    return ToolResult("job_status", command, mode, str(workspace), "job_status", 0, output + "\n", "")
+
+
+def run_job_stop(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    args = command_args(command)
+    identifier = args.get("job_id") or args.get("id")
+    if not identifier:
+        raise ToolError("job_stop args.job_id is required")
+    try:
+        job_id = int(identifier)
+    except (TypeError, ValueError) as exc:
+        raise ToolError("job_stop args.job_id must be an integer") from exc
+    job = get_job_display(job_id, max_chars=2000)
+    ensure_job_belongs_to_workspace(job, workspace)
+    stopped = stop_job(job_id)
+    output = json.dumps(get_job_display(int(stopped["id"])), ensure_ascii=False, indent=2)
+    return ToolResult("job_stop", command, mode, str(workspace), f"job_stop {job_id}", 0, output + "\n", "")
+
+
 def run_plugin_list(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
     output = json.dumps(
         [
@@ -819,6 +893,7 @@ def run_plugin_run(command: dict[str, Any], workspace: Path, mode: str) -> ToolR
 
 registry = ToolRegistry()
 registry.register("shell", run_shell)
+registry.register("background_shell", run_background_shell)
 registry.register("python", run_python)
 registry.register("git", run_git)
 registry.register("git_bootstrap", run_git_bootstrap)
@@ -841,5 +916,7 @@ registry.register("capability_report", run_capability_report)
 registry.register("context_pack", run_context_pack)
 registry.register("list_uploads", run_list_uploads)
 registry.register("recent_results", run_recent_results)
+registry.register("job_status", run_job_status)
+registry.register("job_stop", run_job_stop)
 registry.register("plugin_list", run_plugin_list)
 registry.register("plugin_run", run_plugin_run)

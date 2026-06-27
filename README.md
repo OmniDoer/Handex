@@ -76,6 +76,7 @@ variables are documented in `prompts/README.md`.
 Built-in tools:
 
 - `shell`
+- `background_shell`
 - `python`
 - `read_file`
 - `write_file`
@@ -98,6 +99,8 @@ Built-in tools:
 - `context_pack`
 - `list_uploads`
 - `recent_results`
+- `job_status`
+- `job_stop`
 - `plugin_list`
 - `plugin_run`
 
@@ -142,6 +145,11 @@ workspace, including command JSON, final command, stdout, stderr, and optionally
 the full Tool Result Prompt. This is useful when a browser refresh, missed copy,
 or model switch interrupts the manual loop.
 
+`background_shell` starts a reviewed shell command in the background and returns
+a job id immediately. `job_status` polls the job status plus redacted stdout and
+stderr tails; `job_stop` terminates a running job. Use this for tests, builds,
+downloads, or other commands that may outlive a normal web request.
+
 `git_bootstrap` clones a Git repository into an empty project workspace without
 shell interpolation. Repository URLs with embedded credentials are rejected;
 private clone flows should use reviewed Vault-backed commands instead of
@@ -177,6 +185,8 @@ LLM how to behave like a coding agent inside the Hand Loop:
 - inspect user-provided files through `list_uploads` and `read_file`
 - recover missed Tool Result text through `recent_results` or the project
   Execution History section
+- run long commands through `background_shell`, then poll or stop them with
+  `job_status` and `job_stop`
 - use skills by asking Handex to list/read configured `SKILL.md` files
 - view vault credential metadata without exposing secrets
 - run reviewed commands with local vault secrets injected through environment variables
@@ -399,6 +409,31 @@ The same data is available to the LLM through:
 History display redaction is heuristic. Avoid printing raw credentials in
 normal command output.
 
+## Background Jobs
+
+Long-running commands can be started without blocking the browser request:
+
+```json
+{"tool":"background_shell","args":{"command":"pytest -q"},"cwd":".","mode":"safe","reason":"run tests in the background"}
+```
+
+Handex stores the job under the project and captures stdout/stderr to job log
+files. Poll with:
+
+```json
+{"tool":"job_status","args":{"job_id":1,"max_chars":12000},"mode":"safe","reason":"poll test output"}
+```
+
+Stop a job with:
+
+```json
+{"tool":"job_stop","args":{"job_id":1},"mode":"safe","reason":"stop an obsolete background command"}
+```
+
+The project page also has a Background Jobs section with status, output tails,
+and stop controls. Output shown through the UI and tools is redacted
+heuristically, but commands should still avoid printing raw secrets.
+
 ## Continuation Transcript
 
 Handex projects also expose a Continuation Transcript. This is a compact,
@@ -536,6 +571,6 @@ handex/
 ## Future Roadmap
 
 - Per-project auth roles
-- Streaming command output
+- SSE live output updates for background jobs
 - Nginx optional TLS reverse proxy
 - Offline read-only project cache
