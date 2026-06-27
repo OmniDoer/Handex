@@ -41,10 +41,46 @@ class RunnerTests(unittest.TestCase):
                 import os
                 import sys
 
-                print(json.dumps({
-                    "argv": sys.argv[1:],
-                    "has_handex_vault_key": "HANDEX_VAULT_KEY" in os.environ,
-                }))
+                argv = sys.argv[1:]
+                if argv[:2] == ["cred", "request"]:
+                    origin = argv[argv.index("--origin") + 1] if "--origin" in argv else ""
+                    print("credential_request=req_test")
+                    print(f"origin={origin}")
+                    print("expires_at=123.5")
+                    print("secret_exposed_to_model=false")
+                elif argv[:2] == ["cred", "save-request"]:
+                    print(json.dumps({
+                        "status": "stored",
+                        "credential_id": "cred_saved",
+                        "request_id": argv[2],
+                        "has_vault_arg": "--vault" in argv,
+                        "has_passphrase_file_arg": "--passphrase-file" in argv,
+                        "secret_exposed_to_model": False,
+                    }))
+                elif argv[:2] == ["control", "requests"]:
+                    print(json.dumps([
+                        {
+                            "request_id": "req_test",
+                            "request_type": "credential",
+                            "origin": "https://example.com",
+                            "status": "pending",
+                            "secret_exposed_to_model": False,
+                        }
+                    ]))
+                elif argv[:2] == ["control", "wait-request"]:
+                    print("request_id=req_test")
+                    print("request_completed=true")
+                    print("status=fulfilled")
+                    print("completed_by_user=true")
+                    print("has_ciphertext=true")
+                    print("secret_exposed_to_model=false")
+                elif argv[:2] == ["control", "deny"]:
+                    print(f"denied {argv[-1]}")
+                else:
+                    print(json.dumps({
+                        "argv": argv,
+                        "has_handex_vault_key": "HANDEX_VAULT_KEY" in os.environ,
+                    }))
                 """
             ),
             encoding="utf-8",
@@ -155,6 +191,66 @@ class RunnerTests(unittest.TestCase):
                 os.environ.pop("HANDEX_VAULT_KEY", None)
             else:
                 os.environ["HANDEX_VAULT_KEY"] = old_value
+
+    def test_omnidoer_credential_request_returns_public_metadata(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            script = self.write_fake_omnidoer(Path(tmp))
+            runner.settings = self.fake_omnidoer_settings(script)
+
+            result = registry.run(
+                {
+                    "tool": "omnidoer_credential_request",
+                    "args": {
+                        "origin": "https://example.com",
+                        "summary": "Need a test credential.",
+                        "ttl": "5m",
+                        "no_totp_field": True,
+                    },
+                },
+                tmp,
+                "safe",
+            )
+
+        payload = json.loads(result.stdout)
+        self.assertEqual(result.exit_code, 0)
+        self.assertEqual(payload["credential_request"], "req_test")
+        self.assertEqual(payload["origin"], "https://example.com")
+        self.assertFalse(payload["secret_exposed_to_model"])
+        self.assertIn("omnidoer_request_status", payload["next_tools"])
+        self.assertIn("omnidoer_credential_save_request", payload["next_tools"])
+
+    def test_omnidoer_credential_request_safe_mode_requires_https(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            script = self.write_fake_omnidoer(Path(tmp))
+            runner.settings = self.fake_omnidoer_settings(script)
+
+            with self.assertRaises(ToolError):
+                registry.run({"tool": "omnidoer_credential_request", "args": {"origin": "http://example.com"}}, tmp, "safe")
+
+    def test_omnidoer_request_status_wait_save_and_deny_are_public(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            script = self.write_fake_omnidoer(Path(tmp))
+            runner.settings = self.fake_omnidoer_settings(script)
+
+            status = registry.run({"tool": "omnidoer_request_status", "args": {"request_id": "req_test"}}, tmp, "safe")
+            waited = registry.run({"tool": "omnidoer_request_wait", "args": {"request_id": "req_test", "wait_timeout": "1s"}}, tmp, "safe")
+            saved = registry.run({"tool": "omnidoer_credential_save_request", "args": {"request_id": "req_test", "wait": True, "wait_timeout": "1s"}}, tmp, "safe")
+            denied = registry.run({"tool": "omnidoer_request_deny", "args": {"request_id": "req_test"}}, tmp, "safe")
+
+        status_payload = json.loads(status.stdout)
+        wait_payload = json.loads(waited.stdout)
+        save_payload = json.loads(saved.stdout)
+        deny_payload = json.loads(denied.stdout)
+        self.assertEqual(status_payload["request_id"], "req_test")
+        self.assertFalse(status_payload["secret_exposed_to_model"])
+        self.assertEqual(wait_payload["status"], "fulfilled")
+        self.assertFalse(wait_payload["secret_exposed_to_model"])
+        self.assertEqual(save_payload["status"], "stored")
+        self.assertTrue(save_payload["has_vault_arg"])
+        self.assertTrue(save_payload["has_passphrase_file_arg"])
+        self.assertFalse(save_payload["secret_exposed_to_model"])
+        self.assertEqual(deny_payload["status"], "denied")
+        self.assertFalse(deny_payload["secret_exposed_to_model"])
 
     def test_omnidoer_git_safe_mode_blocks_mutating_subcommands(self):
         with tempfile.TemporaryDirectory() as tmp:

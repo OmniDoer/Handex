@@ -61,6 +61,13 @@ configuration and credential ids from metadata, not pasted tokens. Safe Mode is
 limited to read-only `git ls-remote` and GitHub `GET`; mutating operations
 require YOLO Mode after review.
 
+Missing credentials can be requested through `omnidoer_credential_request`,
+observed through `omnidoer_request_status` or `omnidoer_request_wait`, and saved
+after fulfillment with `omnidoer_credential_save_request`. The user enters
+secrets in the paired OmniDoer Control Client, not in Handex or the web LLM
+transcript; Handex only sees public request metadata and can deny stale requests
+with `omnidoer_request_deny`.
+
 Workspace uploads are exposed through the project page and the `list_uploads`
 tool. Uploaded files live under `.handex_uploads/` inside the workspace, and
 the Single-Step Agent Prompt includes a compact inventory so the LLM can ask

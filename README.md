@@ -99,6 +99,11 @@ Built-in tools:
 - `list_vault_credentials`
 - `vault_list`
 - `vault_run`
+- `omnidoer_credential_request`
+- `omnidoer_credential_save_request`
+- `omnidoer_request_status`
+- `omnidoer_request_wait`
+- `omnidoer_request_deny`
 - `capability_report`
 - `capability_search`
 - `context_pack`
@@ -206,6 +211,15 @@ inherit Handex secret variables. Safe Mode permits only `git ls-remote` and
 GitHub `GET`; mutating Git or GitHub operations require YOLO Mode after human
 review.
 
+`omnidoer_credential_request` creates a pending OmniDoer Control Client
+credential request when a needed credential does not exist yet. It returns only
+public request metadata such as `request_id`, origin, expiry, and status; the
+user enters the secret in the paired Control Client, encrypted to OmniDoer, not
+through Handex or the web LLM. Use `omnidoer_request_status` or
+`omnidoer_request_wait` to observe public completion state, and
+`omnidoer_credential_save_request` to store a fulfilled request into the
+configured OmniDoer vault. `omnidoer_request_deny` cancels a stale request.
+
 `plugin_list` and `plugin_run` expose configured command plugins from
 `HANDEX_PLUGIN_ROOTS`. A plugin is a directory containing `plugin.json`; it
 declares a command argv, description, timeout, and whether it is allowed in
@@ -246,6 +260,8 @@ LLM how to behave like a coding agent inside the Hand Loop:
 - use skills by asking Handex to list/read configured `SKILL.md` files
 - view vault credential metadata without exposing secrets
 - run reviewed commands with local vault secrets injected through environment variables
+- request missing credentials through the paired OmniDoer Control Client without
+  pasting secrets into chat
 - run reviewed Git/GitHub operations with existing OmniDoer vault credentials
   through `omnidoer_git` and `omnidoer_github_api`
 - keep summaries durable between web LLM sessions
@@ -415,6 +431,14 @@ HANDEX_OMNIDOER_GITHUB_API_ORIGIN=https://api.github.com
 
 The related tools are:
 
+- `omnidoer_credential_request`: ask the paired Control Client for a missing
+  credential without exposing plaintext to Handex
+- `omnidoer_credential_save_request`: store a fulfilled request in the
+  configured OmniDoer vault without returning plaintext secrets
+- `omnidoer_request_status`: inspect public metadata for pending or completed
+  Control Client requests
+- `omnidoer_request_wait`: wait briefly for a Control Client request to finish
+- `omnidoer_request_deny`: deny or cancel a no-longer-needed request
 - `omnidoer_git`: run `omnidoer git run` with the configured vault bridge
 - `omnidoer_github_api`: run `omnidoer github api` with the configured vault
   bridge
@@ -423,6 +447,10 @@ Safe Mode only permits read-only `git ls-remote` and GitHub `GET` requests.
 Use YOLO Mode after review for `push`, release creation, issue edits, workflow
 dispatches, or other mutating operations. Command output is still treated as
 heuristically redacted; do not ask tools to print raw tokens or passwords.
+
+Credential requests are intentionally public-metadata-only. Handex can create,
+poll, wait for, or deny the request, but it never receives the plaintext
+password, TOTP seed, or encrypted response body.
 
 ## Capability Report
 

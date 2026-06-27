@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 from urllib.parse import quote
+from urllib.parse import urlparse
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -69,6 +70,7 @@ SAFE_BATCH_TOOLS = {
     "recent_results",
     "plan_status",
     "job_status",
+    "omnidoer_request_status",
     "plugin_list",
 }
 SAFE_BATCH_GIT_COMMANDS = {"status", "log", "show", "diff", "rev-parse", "ls-files", "grep", "describe", "blame"}
@@ -313,6 +315,16 @@ def preview_command(command: dict[str, Any]) -> str:
     if tool == "omnidoer_github_api":
         method = str(args.get("method") or "GET").upper()
         return f"omnidoer github api {method} {args.get('path') or ''}"
+    if tool == "omnidoer_credential_request":
+        return f"omnidoer cred request {args.get('origin') or ''}"
+    if tool == "omnidoer_credential_save_request":
+        return f"omnidoer cred save-request {args.get('request_id') or args.get('id') or ''}"
+    if tool == "omnidoer_request_status":
+        return f"omnidoer control requests {args.get('request_id') or args.get('id') or ''}"
+    if tool == "omnidoer_request_wait":
+        return f"omnidoer control wait-request {args.get('request_id') or args.get('id') or ''}"
+    if tool == "omnidoer_request_deny":
+        return f"omnidoer control deny {args.get('request_id') or args.get('id') or ''}"
     if tool == "git_bootstrap":
         return f"git clone {redacted_repo_url(str(args.get('repo_url') or args.get('url') or ''))}"
     if tool == "apply_patch":
@@ -496,6 +508,161 @@ def optional_credential_args(args: dict[str, Any]) -> list[str]:
     return ["--credential-id", credential_id] if credential_id else []
 
 
+def omnidoer_base_argv() -> list[str]:
+    return [str(getattr(settings, "omnidoer_bin", "") or "omnidoer")]
+
+
+def public_kv_lines(text: str) -> dict[str, Any]:
+    payload: dict[str, Any] = {}
+    notes: list[str] = []
+    for line in text.splitlines():
+        if "=" in line:
+            key, value = line.split("=", 1)
+            key = key.strip()
+            if key:
+                payload[key] = value.strip()
+                continue
+        if line.strip():
+            notes.append(line.strip())
+    if notes:
+        payload["notes"] = notes
+    return payload
+
+
+def run_omnidoer_subprocess(
+    command: dict[str, Any],
+    *,
+    tool: str,
+    mode: str,
+    cwd: Path,
+    argv: list[str],
+) -> ToolResult:
+    final_command = " ".join(shlex.quote(item) for item in argv)
+    return subprocess_result(command=command, tool=tool, mode=mode, cwd=cwd, final_command=final_command, argv=argv, extra_env={}, inherit_env=False)
+
+
+def parse_public_json_or_kv(text: str) -> Any:
+    stripped = text.strip()
+    if not stripped:
+        return {}
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError:
+        return public_kv_lines(stripped)
+
+
+def request_id_arg(args: dict[str, Any], tool: str) -> str:
+    request_id = str(args.get("request_id") or args.get("id") or "")
+    if not request_id:
+        raise ToolError(f"{tool} args.request_id is required")
+    if not re.fullmatch(r"req_[A-Za-z0-9_:-]+", request_id):
+        raise ToolError(f"{tool} args.request_id must look like req_<id>")
+    return request_id
+
+
+def validate_control_origin(origin: str, mode: str) -> None:
+    parsed = urlparse(origin)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise ToolError("origin must include an http(s) scheme and host")
+    if mode == "safe" and parsed.scheme != "https":
+        raise ToolError("Safe Mode credential requests require an HTTPS origin. Use YOLO Mode after review for local HTTP origins.")
+
+
+def run_omnidoer_credential_request(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    cwd = resolve_cwd(command, workspace, mode)
+    args = command_args(command)
+    origin = str(args.get("origin") or "")
+    if not origin:
+        raise ToolError("omnidoer_credential_request args.origin is required")
+    validate_control_origin(origin, mode)
+    argv = [*omnidoer_base_argv(), "cred", "request", "--origin", origin]
+    for arg_key, cli_name in (
+        ("top_level_url", "--top-level-url"),
+        ("summary", "--summary"),
+        ("risk_level", "--risk-level"),
+        ("ttl", "--ttl"),
+        ("username_label", "--username-label"),
+        ("password_label", "--password-label"),
+        ("totp_label", "--totp-label"),
+    ):
+        value = args.get(arg_key)
+        if value not in (None, ""):
+            argv.extend([cli_name, str(value)])
+    if bool(args.get("no_save_to_vault")) or args.get("save_to_vault") is False:
+        argv.append("--no-save-to-vault")
+    if bool(args.get("no_totp_field")):
+        argv.append("--no-totp-field")
+    result = run_omnidoer_subprocess(command, tool="omnidoer_credential_request", mode=mode, cwd=cwd, argv=argv)
+    payload = parse_public_json_or_kv(result.stdout)
+    if not isinstance(payload, dict):
+        payload = {"result": payload}
+    payload["secret_exposed_to_model"] = False
+    if result.exit_code == 0:
+        payload["next_tools"] = ["omnidoer_request_status", "omnidoer_request_wait", "omnidoer_credential_save_request", "omnidoer_request_deny"]
+    output = json.dumps(payload, ensure_ascii=False, indent=2)
+    return ToolResult("omnidoer_credential_request", command, mode, result.cwd, result.final_command, result.exit_code, output + "\n", result.stderr)
+
+
+def run_omnidoer_credential_save_request(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    cwd = resolve_cwd(command, workspace, mode)
+    args = command_args(command)
+    request_id = request_id_arg(args, "omnidoer_credential_save_request")
+    argv = [*omnidoer_base_argv(), "cred", "save-request", request_id, *omnidoer_vault_args()]
+    if bool(args.get("wait")):
+        argv.append("--wait")
+        argv.extend(["--wait-timeout", str(args.get("wait_timeout") or args.get("timeout") or "30s")])
+    if bool(args.get("create_vault")):
+        argv.append("--create-vault")
+    result = run_omnidoer_subprocess(command, tool="omnidoer_credential_save_request", mode=mode, cwd=cwd, argv=argv)
+    payload = parse_public_json_or_kv(result.stdout)
+    if not isinstance(payload, dict):
+        payload = {"result": payload}
+    payload["secret_exposed_to_model"] = False
+    output = json.dumps(payload, ensure_ascii=False, indent=2)
+    return ToolResult("omnidoer_credential_save_request", command, mode, result.cwd, result.final_command, result.exit_code, output + "\n", result.stderr)
+
+
+def run_omnidoer_request_status(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    cwd = resolve_cwd(command, workspace, mode)
+    args = command_args(command)
+    request_id = str(args.get("request_id") or args.get("id") or "")
+    result = run_omnidoer_subprocess(command, tool="omnidoer_request_status", mode=mode, cwd=cwd, argv=[*omnidoer_base_argv(), "control", "requests"])
+    payload = parse_public_json_or_kv(result.stdout)
+    if request_id:
+        if not re.fullmatch(r"req_[A-Za-z0-9_:-]+", request_id):
+            raise ToolError("omnidoer_request_status args.request_id must look like req_<id>")
+        if isinstance(payload, list):
+            matches = [item for item in payload if isinstance(item, dict) and item.get("request_id") == request_id]
+            payload = matches[0] if matches else {"status": "not_found", "request_id": request_id, "secret_exposed_to_model": False}
+    output = json.dumps(payload, ensure_ascii=False, indent=2)
+    return ToolResult("omnidoer_request_status", command, mode, result.cwd, result.final_command, result.exit_code, output + "\n", result.stderr)
+
+
+def run_omnidoer_request_wait(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    cwd = resolve_cwd(command, workspace, mode)
+    args = command_args(command)
+    request_id = request_id_arg(args, "omnidoer_request_wait")
+    wait_timeout = str(args.get("wait_timeout") or args.get("timeout") or "30s")
+    argv = [*omnidoer_base_argv(), "control", "wait-request", "--timeout", wait_timeout, request_id]
+    result = run_omnidoer_subprocess(command, tool="omnidoer_request_wait", mode=mode, cwd=cwd, argv=argv)
+    payload = parse_public_json_or_kv(result.stdout)
+    if not isinstance(payload, dict):
+        payload = {"result": payload}
+    payload["secret_exposed_to_model"] = False
+    output = json.dumps(payload, ensure_ascii=False, indent=2)
+    return ToolResult("omnidoer_request_wait", command, mode, result.cwd, result.final_command, result.exit_code, output + "\n", result.stderr)
+
+
+def run_omnidoer_request_deny(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    cwd = resolve_cwd(command, workspace, mode)
+    args = command_args(command)
+    request_id = request_id_arg(args, "omnidoer_request_deny")
+    result = run_omnidoer_subprocess(command, tool="omnidoer_request_deny", mode=mode, cwd=cwd, argv=[*omnidoer_base_argv(), "control", "deny", request_id])
+    status = "denied" if result.exit_code == 0 else "error"
+    output = json.dumps({"request_id": request_id, "status": status, "secret_exposed_to_model": False}, ensure_ascii=False, indent=2)
+    return ToolResult("omnidoer_request_deny", command, mode, result.cwd, result.final_command, result.exit_code, output + "\n", result.stderr)
+
+
 def run_omnidoer_git(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
     cwd = resolve_cwd(command, workspace, mode)
     args = command_args(command)
@@ -506,7 +673,7 @@ def run_omnidoer_git(command: dict[str, Any], workspace: Path, mode: str) -> Too
         raise ToolError("Safe Mode omnidoer_git only permits read-only git ls-remote. Use YOLO Mode after review for credentialed writes or fetches.")
     origin = str(args.get("origin") or getattr(settings, "omnidoer_git_origin", "") or "https://github.com")
     argv = [
-        str(getattr(settings, "omnidoer_bin", "") or "omnidoer"),
+        *omnidoer_base_argv(),
         "git",
         "run",
         "--origin",
@@ -515,8 +682,7 @@ def run_omnidoer_git(command: dict[str, Any], workspace: Path, mode: str) -> Too
         *optional_credential_args(args),
         *git_args,
     ]
-    final_command = " ".join(shlex.quote(item) for item in argv)
-    return subprocess_result(command=command, tool="omnidoer_git", mode=mode, cwd=cwd, final_command=final_command, argv=argv, extra_env={}, inherit_env=False)
+    return run_omnidoer_subprocess(command, tool="omnidoer_git", mode=mode, cwd=cwd, argv=argv)
 
 
 def github_body_json(args: dict[str, Any]) -> str | None:
@@ -539,7 +705,7 @@ def run_omnidoer_github_api(command: dict[str, Any], workspace: Path, mode: str)
     origin = str(args.get("origin") or getattr(settings, "omnidoer_git_origin", "") or "https://github.com")
     api_origin = str(args.get("api_origin") or getattr(settings, "omnidoer_github_api_origin", "") or "https://api.github.com")
     argv = [
-        str(getattr(settings, "omnidoer_bin", "") or "omnidoer"),
+        *omnidoer_base_argv(),
         "github",
         "api",
         "--origin",
@@ -553,8 +719,7 @@ def run_omnidoer_github_api(command: dict[str, Any], workspace: Path, mode: str)
     if body is not None:
         argv.extend(["--body-json", body])
     argv.extend([method, path])
-    final_command = " ".join(shlex.quote(item) for item in argv)
-    return subprocess_result(command=command, tool="omnidoer_github_api", mode=mode, cwd=cwd, final_command=final_command, argv=argv, extra_env={}, inherit_env=False)
+    return run_omnidoer_subprocess(command, tool="omnidoer_github_api", mode=mode, cwd=cwd, argv=argv)
 
 
 def run_git_bootstrap(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
@@ -1447,6 +1612,11 @@ registry.register("shell", run_shell)
 registry.register("background_shell", run_background_shell)
 registry.register("python", run_python)
 registry.register("git", run_git)
+registry.register("omnidoer_credential_request", run_omnidoer_credential_request)
+registry.register("omnidoer_credential_save_request", run_omnidoer_credential_save_request)
+registry.register("omnidoer_request_status", run_omnidoer_request_status)
+registry.register("omnidoer_request_wait", run_omnidoer_request_wait)
+registry.register("omnidoer_request_deny", run_omnidoer_request_deny)
 registry.register("omnidoer_git", run_omnidoer_git)
 registry.register("omnidoer_github_api", run_omnidoer_github_api)
 registry.register("git_bootstrap", run_git_bootstrap)
