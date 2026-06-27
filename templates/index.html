@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Handex Projects{% endblock %}
+{% block content %}
+<section class="intro">
+  <h1>Projects</h1>
+  <p>Pick a workspace, copy the launch prompt to any web LLM, then paste the full reply back here for tool execution.</p>
+</section>
+
+<section class="project-list" aria-label="Project list">
+  {% if projects %}
+    {% for project in projects %}
+      <a class="project-row" href="/projects/{{ project.id }}">
+        <span>
+          <strong>{{ project.name }}</strong>
+          <small>{{ project.goal or project.description or "No goal set" }}</small>
+        </span>
+        <span class="mode-pill">{{ (project.settings or {}).get("mode", "safe")|upper }}</span>
+      </a>
+    {% endfor %}
+  {% else %}
+    <p class="empty">No projects yet.</p>
+  {% endif %}
+</section>
+
+<details class="section-block" open>
+  <summary>Create Project</summary>
+  <form class="stack" method="post" action="/projects">
+    <label>
+      Project Name
+      <input name="name" required placeholder="Handex">
+    </label>
+    <label>
+      Description
+      <textarea name="description" rows="3" placeholder="Project background"></textarea>
+    </label>
+    <label>
+      Goal
+      <textarea name="goal" rows="3" placeholder="Current goal"></textarea>
+    </label>
+    <label>
+      Workspace Path
+      <input name="workspace_path" placeholder="/opt/handex/projects/handex">
+    </label>
+    <button type="submit">Create</button>
+  </form>
+</details>
+{% endblock %}

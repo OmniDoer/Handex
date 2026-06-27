@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Handex">
+  <rect width="512" height="512" rx="96" fill="#f7f8f7"/>
+  <path d="M116 352V160h60v142h58V128h60v174h42V178h60v174c0 61-49 110-110 110h-60c-61 0-110-49-110-110Z" fill="#0f766e"/>
+  <path d="M116 352c0 61 49 110 110 110h60c61 0 110-49 110-110H116Z" fill="#2f855a"/>
+  <path d="M332 132h64v66h-64zM116 94h60v66h-60z" fill="#f6ad55"/>
+</svg>

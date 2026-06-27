@@ -1,0 +1,15 @@
+[Unit]
+Description=Handex Human-in-the-Loop Workspace
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/handex
+EnvironmentFile=/etc/handex/handex.env
+ExecStart=/opt/handex/.venv/bin/uvicorn handex.app:app --host ${HANDEX_HOST} --port ${HANDEX_PORT}
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

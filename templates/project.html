@@ -1,0 +1,230 @@
+{% extends "base.html" %}
+{% block title %}{{ project.name }} - Handex{% endblock %}
+{% block content %}
+<nav class="crumb"><a href="/">Projects</a><span>/</span><strong>{{ project.name }}</strong></nav>
+
+<section class="project-head">
+  <div>
+    <h1>{{ project.name }}</h1>
+    <p>{{ project.goal or project.description or "No active goal set." }}</p>
+  </div>
+  <span class="mode-pill {{ project_mode }}">{{ project_mode|upper }}</span>
+</section>
+
+<section class="section-block" id="launch">
+  <div class="section-title">
+    <h2>Launch Prompt</h2>
+    <button type="button" class="copy-target" data-target="start-prompt">Copy</button>
+  </div>
+  <textarea id="start-prompt" class="mono tall" readonly>{{ start_prompt }}</textarea>
+</section>
+
+<section class="section-block" id="loop">
+  <div class="section-title">
+    <h2>LLM Reply</h2>
+  </div>
+  <form class="stack" method="post" action="/projects/{{ project.id }}/parse">
+    <label>
+      Paste the full web LLM reply
+      <textarea name="llm_reply" class="mono tall" placeholder="Paste analysis, Markdown, JSON code blocks, or a Summary here.">{{ pasted_reply or "" }}</textarea>
+    </label>
+    <button type="submit">Parse Tool Command</button>
+  </form>
+</section>
+
+{% if command_choices %}
+<section class="section-block" id="commands">
+  <div class="section-title">
+    <h2>Tool Commands</h2>
+    <span>{{ command_choices|length }} found</span>
+  </div>
+  {% for choice in command_choices %}
+    <article class="command-item">
+      <div class="command-meta">
+        <strong>Command {{ loop.index }}</strong>
+        <span>{{ choice.candidate.source }}</span>
+      </div>
+      {% if choice.candidate.warnings %}
+        <ul class="warning-list">
+          {% for warning in choice.candidate.warnings %}
+            <li>{{ warning }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+      {% if choice.preview.warnings %}
+        <ul class="warning-list">
+          {% for warning in choice.preview.warnings %}
+            <li>{{ warning }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+      <dl class="preview-grid">
+        <div><dt>Mode</dt><dd>{{ choice.preview.mode|upper }}</dd></div>
+        <div><dt>CWD</dt><dd>{{ choice.preview.cwd or "Preview blocked" }}</dd></div>
+        <div><dt>Final Command</dt><dd><code>{{ choice.preview.final_command or "(none)" }}</code></dd></div>
+      </dl>
+      <form class="stack" method="post" action="/projects/{{ project.id }}/execute">
+        <label>
+          JSON
+          <textarea name="command_json" class="mono command-json">{{ choice.candidate.raw_json }}</textarea>
+        </label>
+        <label>
+          Execution Mode
+          <select name="execution_mode">
+            <option value="safe" {% if choice.preview.mode == "safe" %}selected{% endif %}>Safe Mode</option>
+            <option value="yolo" {% if choice.preview.mode == "yolo" %}selected{% endif %}>YOLO Mode</option>
+          </select>
+        </label>
+        <div class="button-row">
+          <button type="submit">Execute</button>
+          <a class="button secondary" href="/projects/{{ project.id }}#loop">Reject</a>
+        </div>
+      </form>
+    </article>
+  {% endfor %}
+</section>
+{% endif %}
+
+{% if correction_prompt %}
+<section class="section-block" id="correction">
+  <div class="section-title">
+    <h2>JSON Fix Prompt</h2>
+    <button type="button" class="copy-target" data-target="correction-prompt">Copy</button>
+  </div>
+  <textarea id="correction-prompt" class="mono tall" readonly>{{ correction_prompt }}</textarea>
+  {% if parse_result.errors %}
+    <ul class="warning-list">
+      {% for error in parse_result.errors[:8] %}
+        <li>{{ error }}</li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if execution_result %}
+<section class="section-block" id="result">
+  <div class="section-title">
+    <h2>Tool Result</h2>
+    <button type="button" class="copy-target" data-target="result-prompt">Copy</button>
+  </div>
+  <dl class="preview-grid">
+    <div><dt>Exit Code</dt><dd>{{ execution_result.exit_code }}</dd></div>
+    <div><dt>Mode</dt><dd>{{ execution_result.mode|upper }}</dd></div>
+    <div><dt>CWD</dt><dd>{{ execution_result.cwd }}</dd></div>
+    <div><dt>Final Command</dt><dd><code>{{ execution_result.final_command }}</code></dd></div>
+  </dl>
+  <textarea id="result-prompt" class="mono tall" readonly>{{ result_prompt }}</textarea>
+</section>
+{% endif %}
+
+<section class="section-block" id="summary">
+  <div class="section-title">
+    <h2>Summary</h2>
+    <button type="button" class="copy-target" data-target="summary-prompt">Copy Prompt</button>
+  </div>
+  <textarea id="summary-prompt" class="mono medium" readonly>{{ summary_prompt }}</textarea>
+  <form class="stack" method="post" action="/projects/{{ project.id }}/summary">
+    <label>
+      Paste latest Summary
+      <textarea name="summary_content" class="mono medium">{{ project.current_summary or "" }}</textarea>
+    </label>
+    <label>
+      Note
+      <input name="note" placeholder="optional">
+    </label>
+    <button type="submit">Save Summary</button>
+  </form>
+</section>
+
+<details class="section-block" id="history">
+  <summary>Summary History</summary>
+  {% if summaries %}
+    {% for summary in summaries %}
+      <article class="history-item">
+        <div class="command-meta">
+          <strong>#{{ summary.id }}</strong>
+          <span>{{ summary.created_at }}</span>
+        </div>
+        <pre>{{ summary.content }}</pre>
+        <form method="post" action="/projects/{{ project.id }}/summary/{{ summary.id }}/rollback">
+          <button class="secondary" type="submit">Rollback</button>
+        </form>
+      </article>
+    {% endfor %}
+  {% else %}
+    <p class="empty">No summary history yet.</p>
+  {% endif %}
+</details>
+
+<details class="section-block" id="logs">
+  <summary>Logs</summary>
+  {% if logs %}
+    {% for log in logs %}
+      <article class="history-item">
+        <div class="command-meta">
+          <strong>{{ log.event_type }}</strong>
+          <span>{{ log.created_at }}</span>
+        </div>
+        <dl class="preview-grid">
+          <div><dt>Mode</dt><dd>{{ log.mode or "-" }}</dd></div>
+          <div><dt>Exit</dt><dd>{{ log.exit_code if log.exit_code is not none else "-" }}</dd></div>
+          <div><dt>CWD</dt><dd>{{ log.cwd or "-" }}</dd></div>
+          <div><dt>Command</dt><dd><code>{{ log.final_command or "-" }}</code></dd></div>
+        </dl>
+        {% if log.stderr %}<pre>{{ log.stderr }}</pre>{% endif %}
+      </article>
+    {% endfor %}
+  {% else %}
+    <p class="empty">No logs yet.</p>
+  {% endif %}
+</details>
+
+<details class="section-block" id="settings">
+  <summary>Settings</summary>
+  <form class="stack" method="post" action="/projects/{{ project.id }}/settings">
+    <label>
+      Project Name
+      <input name="name" required value="{{ project.name }}">
+    </label>
+    <label>
+      Description
+      <textarea name="description" rows="4">{{ project.description }}</textarea>
+    </label>
+    <label>
+      Goal
+      <textarea name="goal" rows="4">{{ project.goal }}</textarea>
+    </label>
+    <label>
+      Project State
+      <textarea name="project_state" rows="4">{{ project.project_state }}</textarea>
+    </label>
+    <label>
+      Current Summary
+      <textarea name="current_summary" rows="6">{{ project.current_summary }}</textarea>
+    </label>
+    <label>
+      Workspace Path
+      <input name="workspace_path" value="{{ project.workspace_path }}">
+    </label>
+    <fieldset class="segmented">
+      <legend>Default Mode</legend>
+      <label><input type="radio" name="mode" value="safe" {% if project_mode == "safe" %}checked{% endif %}> Safe</label>
+      <label><input type="radio" name="mode" value="yolo" {% if project_mode == "yolo" %}checked{% endif %}> YOLO</label>
+    </fieldset>
+    <label>
+      Prompt Template
+      <textarea name="prompt_template" class="mono tall" placeholder="{{ default_prompt_template }}">{{ project.prompt_template }}</textarea>
+    </label>
+    <label>
+      Tool Protocol
+      <textarea name="tool_protocol" class="mono tall" placeholder="{{ default_tool_protocol }}">{{ project.tool_protocol }}</textarea>
+    </label>
+    <div class="button-row">
+      <button type="submit">Save Settings</button>
+      <button class="danger" type="submit" form="delete-project">Delete Project</button>
+    </div>
+  </form>
+  <form id="delete-project" method="post" action="/projects/{{ project.id }}/delete"></form>
+</details>
+{% endblock %}

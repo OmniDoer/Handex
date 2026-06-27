@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0f766e">
+    <title>Handex Login</title>
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/static/app.css">
+  </head>
+  <body>
+    <main class="login-shell">
+      <form class="login-box" method="post" action="/login">
+        <span class="brand-mark large" aria-hidden="true"></span>
+        <h1>Handex</h1>
+        <p>Human-in-the-Loop Workspace</p>
+        {% if error %}
+          <div class="alert">Invalid password.</div>
+        {% endif %}
+        <input type="hidden" name="next_url" value="{{ next_url }}">
+        <label>
+          Password
+          <input name="password" type="password" autocomplete="current-password" autofocus>
+        </label>
+        <button type="submit">Enter</button>
+      </form>
+    </main>
+    <script src="/static/app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0f766e">
+    <title>{% block title %}Handex{% endblock %}</title>
+    <link rel="manifest" href="/manifest.webmanifest">
+    <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/static/app.css">
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="Handex home">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span>Handex</span>
+      </a>
+      <form method="post" action="/logout">
+        <button class="ghost small" type="submit">Log out</button>
+      </form>
+    </header>
+    <main class="shell">
+      {% block content %}{% endblock %}
+    </main>
+    <script src="/static/app.js"></script>
+  </body>
+</html>
