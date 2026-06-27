@@ -12,6 +12,7 @@ from fastapi.templating import Jinja2Templates
 
 from . import __version__
 from .auth import login_response, logout_response, request_next_url, require_auth, verify_password
+from .capabilities import list_skills, list_vault_metadata
 from .config import settings
 from .db import (
     add_log,
@@ -32,6 +33,7 @@ from .parser import parse_llm_reply
 from .prompts import (
     DEFAULT_PROMPT_TEMPLATE,
     DEFAULT_TOOL_PROTOCOL,
+    build_agent_fallback_prompt,
     build_correction_prompt,
     build_start_prompt,
     build_summary_prompt,
@@ -76,12 +78,22 @@ def project_mode(project: dict[str, Any]) -> str:
 
 
 def project_page_context(project: dict[str, Any], **extra: Any) -> dict[str, Any]:
+    vault_error = ""
+    try:
+        vault_credentials = list_vault_metadata()
+    except Exception as exc:
+        vault_credentials = []
+        vault_error = f"{type(exc).__name__}: {exc}"
     context = {
         "project": project,
         "start_prompt": build_start_prompt(project),
+        "agent_prompt": build_agent_fallback_prompt(project),
         "summary_prompt": build_summary_prompt(project),
         "summaries": list_summaries(int(project["id"])),
         "logs": list_logs(int(project["id"])),
+        "skills": list_skills(),
+        "vault_credentials": vault_credentials,
+        "vault_error": vault_error,
         "default_prompt_template": DEFAULT_PROMPT_TEMPLATE,
         "default_tool_protocol": DEFAULT_TOOL_PROTOCOL,
         "tool_names": registry.names(),
@@ -230,6 +242,11 @@ def start_prompt(project_id: int, _: None = Depends(require_auth)) -> str:
 @app.get("/projects/{project_id}/prompt/summary", response_class=PlainTextResponse)
 def summary_prompt(project_id: int, _: None = Depends(require_auth)) -> str:
     return build_summary_prompt(project_or_404(project_id))
+
+
+@app.get("/projects/{project_id}/prompt/agent", response_class=PlainTextResponse)
+def agent_prompt(project_id: int, _: None = Depends(require_auth)) -> str:
+    return build_agent_fallback_prompt(project_or_404(project_id))
 
 
 @app.post("/projects/{project_id}/parse", response_class=HTMLResponse)

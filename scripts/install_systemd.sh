@@ -11,6 +11,9 @@ if [[ ! -f /etc/handex/handex.env ]]; then
     printf 'HANDEX_DATA_DIR=/opt/handex/data\n'
     printf 'HANDEX_PROJECTS_DIR=/opt/handex/projects\n'
     printf 'HANDEX_LOGS_DIR=/opt/handex/logs\n'
+    printf 'HANDEX_SKILL_ROOTS=/opt/handex/skills\n'
+    printf 'HANDEX_VAULT_METADATA_COMMAND=\n'
+    printf 'HANDEX_HELP_COMMANDS=\n'
     printf 'HANDEX_SECRET_KEY=%s\n' "$(openssl rand -hex 32)"
     printf 'HANDEX_ADMIN_PASSWORD=%s\n' "$(openssl rand -base64 24 | tr -d '\n')"
     if [[ -f /etc/letsencrypt/live/482692.xyz/fullchain.pem && -f /etc/letsencrypt/live/482692.xyz/privkey.pem ]]; then

@@ -5,6 +5,27 @@ import textwrap
 from typing import Any
 
 from . import __version__
+from .capabilities import skill_pack_prompt
+
+
+TOOL_NAMES = [
+    "shell",
+    "python",
+    "read_file",
+    "write_file",
+    "append_file",
+    "replace_file",
+    "delete_file",
+    "list_files",
+    "search_files",
+    "grep",
+    "git",
+    "list_skills",
+    "read_skill",
+    "skill_pack",
+    "list_vault_credentials",
+    "capability_report",
+]
 
 
 TOOL_SCHEMA = {
@@ -13,19 +34,7 @@ TOOL_SCHEMA = {
     "properties": {
         "tool": {
             "type": "string",
-            "enum": [
-                "shell",
-                "python",
-                "read_file",
-                "write_file",
-                "append_file",
-                "replace_file",
-                "delete_file",
-                "list_files",
-                "search_files",
-                "grep",
-                "git",
-            ],
+            "enum": TOOL_NAMES,
         },
         "args": {"type": "object"},
         "cwd": {"type": "string", "description": "Optional working directory. Relative paths resolve inside the workspace."},
@@ -39,7 +48,7 @@ DEFAULT_TOOL_PROTOCOL = """When you need Linux tools, output exactly one Tool Co
 
 Schema:
 {
-  "tool": "shell | python | read_file | write_file | append_file | replace_file | delete_file | list_files | search_files | grep | git",
+  "tool": "shell | python | read_file | write_file | append_file | replace_file | delete_file | list_files | search_files | grep | git | list_skills | read_skill | skill_pack | list_vault_credentials | capability_report",
   "args": {},
   "cwd": ".",
   "mode": "safe",
@@ -51,6 +60,15 @@ Examples:
 {"tool":"read_file","args":{"path":"README.md"},"mode":"safe","reason":"read project docs"}
 {"tool":"write_file","args":{"path":"notes.txt","content":"hello\\n"},"mode":"safe","reason":"create a note"}
 {"tool":"git","args":{"args":["status","--short"]},"cwd":".","mode":"safe","reason":"inspect git status"}
+{"tool":"list_skills","args":{},"mode":"safe","reason":"inspect available Handex skills"}
+{"tool":"read_skill","args":{"skill_id":"root1:example-skill"},"mode":"safe","reason":"load relevant skill instructions"}
+{"tool":"list_vault_credentials","args":{},"mode":"safe","reason":"inspect available credential metadata without secrets"}
+{"tool":"capability_report","args":{},"mode":"safe","reason":"inspect configured Handex skill roots and providers"}
+
+Vault rules:
+- list_vault_credentials returns metadata only: credential id, masked username, origin, kind, name, source, host.
+- Never ask Handex to print passwords, tokens, private keys, or decrypted secrets.
+- For credentialed git or GitHub work, request a shell command that uses the locally configured Vault-backed CLI and let the human review it.
 
 If no tool is needed, write normal analysis or a Summary. Do not invent API access. The user will copy your full reply back into Handex, and Handex will extract the JSON."""
 
@@ -93,6 +111,35 @@ Hand Loop:
 6. Continue from that result."""
 
 
+AGENT_FALLBACK_TEMPLATE = """You are acting as a coding agent through Handex, a manual Human-in-the-Loop workspace for web LLMs and local tools.
+
+There is no required LLM API, model vendor, autonomous browser, MCP dependency, Codex dependency, or OmniDoer dependency in this loop. The human copies your entire reply into Handex. Handex parses Tool Command JSON, shows the exact command and execution mode to the human, executes only after human approval, then returns a Tool Result Prompt.
+
+Project:
+- Name: {project_name}
+- Workspace: {workspace_path}
+- Goal: {current_goal}
+- Summary: {current_summary}
+- State: {project_state}
+
+Operating rules:
+- Read the codebase before making implementation claims.
+- Use small, reviewable Tool Commands.
+- Prefer Safe Mode. Request YOLO Mode only when it is necessary and explain why.
+- Never say a command ran until Handex returns Tool Result.
+- Keep secrets out of chat. Vault access is metadata-only unless the human explicitly runs a local Vault-backed command after review.
+- Use Handex skills by listing configured skill roots first, then reading only the relevant SKILL.md instructions.
+- After durable progress, update the Summary.
+
+Agent-compatible tools available through Handex:
+{tool_protocol}
+
+Configured skill catalog snapshot:
+{skill_pack}
+
+Start by identifying the next concrete step. If you need local context, output one Tool Command JSON object."""
+
+
 def compact(value: str, limit: int = 6000) -> str:
     value = value.strip()
     if len(value) <= limit:
@@ -115,6 +162,19 @@ def build_start_prompt(project: dict[str, Any]) -> str:
         return template.format(**values).strip()
     except Exception:
         return DEFAULT_PROMPT_TEMPLATE.format(**values).strip()
+
+
+def build_agent_fallback_prompt(project: dict[str, Any]) -> str:
+    return AGENT_FALLBACK_TEMPLATE.format(
+        project_name=project.get("name") or "Untitled",
+        workspace_path=project.get("workspace_path") or ".",
+        current_goal=compact(project.get("goal") or "No current goal set."),
+        current_summary=compact(project.get("current_summary") or "No summary yet."),
+        project_state=compact(project.get("project_state") or "No project state recorded."),
+        tool_protocol=compact(project.get("tool_protocol") or DEFAULT_TOOL_PROTOCOL, 8000),
+        skill_pack=compact(skill_pack_prompt(), 10000),
+    ).strip()
+
 
 
 def build_summary_prompt(project: dict[str, Any]) -> str:

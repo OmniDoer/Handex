@@ -32,6 +32,62 @@
   <textarea id="start-prompt" class="mono tall" readonly>{{ start_prompt }}</textarea>
 </section>
 
+<section class="section-block" id="agent">
+  <div class="section-title">
+    <h2>Agent Fallback Prompt</h2>
+    <button type="button" class="copy-target" data-target="agent-prompt">Copy</button>
+  </div>
+  <textarea id="agent-prompt" class="mono tall" readonly>{{ agent_prompt }}</textarea>
+</section>
+
+<details class="section-block" id="capabilities">
+  <summary>Skills And Vault</summary>
+  <div class="section-title inner">
+    <h2>Skills</h2>
+    <span>{{ skills|length }} found</span>
+  </div>
+  {% if skills %}
+    {% for skill in skills %}
+      <article class="history-item">
+        <div class="command-meta">
+          <strong>{{ skill.name }}</strong>
+          <span>{{ skill.skill_id }}</span>
+        </div>
+        <p>{{ skill.description or "No description." }}</p>
+        <code>{{ skill.root }}</code>
+      </article>
+    {% endfor %}
+  {% else %}
+    <p class="empty">No skills configured. Set HANDEX_SKILL_ROOTS to directories containing SKILL.md files.</p>
+  {% endif %}
+
+  <div class="section-title inner">
+    <h2>Vault Metadata</h2>
+    <span>{{ vault_credentials|length }} records</span>
+  </div>
+  {% if vault_error %}
+    <div class="alert">{{ vault_error }}</div>
+  {% endif %}
+  {% if vault_credentials %}
+    {% for credential in vault_credentials %}
+      <article class="history-item">
+        <div class="command-meta">
+          <strong>{{ credential.name or credential.kind or "credential" }}</strong>
+          <span>{{ credential.credential_id }}</span>
+        </div>
+        <dl class="preview-grid">
+          <div><dt>User</dt><dd>{{ credential.username or "-" }}</dd></div>
+          <div><dt>Kind</dt><dd>{{ credential.kind or "-" }}</dd></div>
+          <div><dt>Host</dt><dd>{{ credential.host or "-" }}</dd></div>
+          <div><dt>Origins</dt><dd>{{ credential.allowed_origins|join(", ") }}</dd></div>
+        </dl>
+      </article>
+    {% endfor %}
+  {% elif not vault_error %}
+    <p class="empty">No vault metadata provider configured.</p>
+  {% endif %}
+</details>
+
 <section class="section-block" id="loop">
   <div class="section-title">
     <h2>LLM Reply</h2>

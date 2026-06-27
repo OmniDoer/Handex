@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
+from ..capabilities import configured_capability_report, list_skills, list_vault_metadata, read_skill, skill_pack_prompt
 from ..config import settings
 from ..prompts import TOOL_SCHEMA
 
@@ -183,6 +184,10 @@ def preview_command(command: dict[str, Any]) -> str:
         return "git " + " ".join(shlex.quote(item) for item in git_args)
     if tool in {"read_file", "write_file", "append_file", "replace_file", "delete_file", "list_files", "search_files", "grep"}:
         return f"{tool} {args.get('path') or args.get('root') or '.'}"
+    if tool == "read_skill":
+        return f"read_skill {args.get('skill_id') or args.get('name') or ''}"
+    if tool in {"list_skills", "skill_pack", "list_vault_credentials", "capability_report"}:
+        return tool
     return tool
 
 
@@ -409,6 +414,50 @@ def run_grep(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
     return ToolResult("grep", command, mode, str(root), f"grep {pattern} {root}", 0, "\n".join(lines) + ("\n" if lines else ""), "")
 
 
+def run_list_skills(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    skills = [
+        {
+            "skill_id": skill.skill_id,
+            "name": skill.name,
+            "description": skill.description,
+            "root": skill.root,
+        }
+        for skill in list_skills()
+    ]
+    output = json.dumps(skills, ensure_ascii=False, indent=2)
+    return ToolResult("list_skills", command, mode, str(workspace), "list_skills", 0, output + "\n", "")
+
+
+def run_read_skill(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    args = command_args(command)
+    identifier = str(args.get("skill_id") or args.get("name") or "")
+    if not identifier:
+        raise ToolError("read_skill args.skill_id is required")
+    skill, content = read_skill(identifier)
+    header = {
+        "skill_id": skill.skill_id,
+        "name": skill.name,
+        "description": skill.description,
+        "root": skill.root,
+    }
+    output = json.dumps(header, ensure_ascii=False, indent=2) + "\n\n" + content
+    return ToolResult("read_skill", command, mode, str(workspace), f"read_skill {identifier}", 0, clamp_output(output), "")
+
+
+def run_skill_pack(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    return ToolResult("skill_pack", command, mode, str(workspace), "skill_pack", 0, clamp_output(skill_pack_prompt()) + "\n", "")
+
+
+def run_list_vault_credentials(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    output = json.dumps(list_vault_metadata(), ensure_ascii=False, indent=2)
+    return ToolResult("list_vault_credentials", command, mode, str(workspace), "list_vault_credentials", 0, output + "\n", "")
+
+
+def run_capability_report(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    tool_name = str(command.get("tool") or "capability_report")
+    return ToolResult(tool_name, command, mode, str(workspace), tool_name, 0, clamp_output(configured_capability_report()) + "\n", "")
+
+
 registry = ToolRegistry()
 registry.register("shell", run_shell)
 registry.register("python", run_python)
@@ -421,3 +470,8 @@ registry.register("delete_file", run_delete_file)
 registry.register("list_files", run_list_files)
 registry.register("search_files", run_search_files)
 registry.register("grep", run_grep)
+registry.register("list_skills", run_list_skills)
+registry.register("read_skill", run_read_skill)
+registry.register("skill_pack", run_skill_pack)
+registry.register("list_vault_credentials", run_list_vault_credentials)
+registry.register("capability_report", run_capability_report)

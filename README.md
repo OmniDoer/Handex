@@ -14,6 +14,7 @@ Tongyi Qianwen, and any model that can exchange text by copy and paste.
 - Jinja2 templates with a small mobile-first frontend
 - PWA manifest and service worker for installable browser use
 - Registry-based tool runner in `handex/tools/runner.py`
+- Dynamic skill roots, vault metadata providers, and capability help commands
 - systemd service listening on port `17395`
 
 Handex is not the agent. The web LLM is the agent. Handex maintains durable
@@ -82,6 +83,11 @@ Built-in tools:
 - `search_files`
 - `grep`
 - `git`
+- `list_skills`
+- `read_skill`
+- `skill_pack`
+- `list_vault_credentials`
+- `capability_report`
 
 Command schema:
 
@@ -98,6 +104,78 @@ Command schema:
 The runner is plugin-ready through `ToolRegistry`. Future tools can register a
 callable that receives the parsed command, resolved workspace, and mode, then
 returns a `ToolResult`.
+
+## Agent Fallback Mode
+
+Handex can be used as a manual replacement when an automated coding agent is
+unavailable or quota-limited. The project page includes an Agent Fallback Prompt
+that tells any web LLM how to behave like a coding agent inside the Hand Loop:
+
+- inspect local context through Tool Commands
+- request exact file reads and edits
+- use skills by asking Handex to list/read configured `SKILL.md` files
+- view vault credential metadata without exposing secrets
+- keep summaries durable between web LLM sessions
+
+This mode is not Codex-specific and does not vendor Codex, OmniDoer, or any
+private runtime. Handex is a peer framework: it reads compatible capability
+sources from configuration at runtime.
+
+## Skills
+
+Handex skills are dynamic instruction files. A skill is any directory containing
+`SKILL.md`; optional front matter can provide `name` and `description`.
+
+Configure roots with:
+
+```sh
+HANDEX_SKILL_ROOTS=/opt/handex/skills:/some/other/skills
+```
+
+The built-in skill tools are:
+
+- `list_skills`: return skill ids, names, descriptions, and source roots
+- `read_skill`: read one configured `SKILL.md` by skill id or unique name
+- `skill_pack`: return a compact skill catalog prompt
+
+Handex only reads skills from configured roots. It does not hard-code or commit
+the server's current Codex/OmniDoer skills.
+
+## Vault Metadata
+
+Handex does not decrypt or print credentials by default. Instead, it can call a
+configured metadata provider that returns a JSON list of credential records. The
+provider output is sanitized down to:
+
+- credential id
+- masked username
+- allowed origins
+- kind
+- name
+- source
+- host
+
+Configure a provider with:
+
+```sh
+HANDEX_VAULT_METADATA_COMMAND='your-vault-cli list-metadata --json'
+```
+
+The `list_vault_credentials` tool returns only this metadata. Credentialed
+operations should still happen through local commands reviewed by the human,
+for example a Vault-backed git wrapper.
+
+## Capability Report
+
+`HANDEX_HELP_COMMANDS` can expose local capability help text without coupling
+Handex to a specific agent runtime:
+
+```sh
+HANDEX_HELP_COMMANDS='codex=codex --help;;omnidoer=omnidoer --help'
+```
+
+The `capability_report` tool reports configured skill roots, whether a vault
+metadata provider exists, and the help output from those commands.
 
 ## JSON Correction
 
@@ -161,6 +239,17 @@ The installer creates `/etc/handex/handex.env` with a generated
 `HANDEX_SECRET_KEY` and `HANDEX_ADMIN_PASSWORD`, installs
 `/etc/systemd/system/handex.service`, enables it, and starts it.
 
+Important runtime configuration:
+
+```sh
+HANDEX_SKILL_ROOTS=/opt/handex/skills
+HANDEX_VAULT_METADATA_COMMAND=
+HANDEX_HELP_COMMANDS=
+```
+
+These can be changed in `/etc/handex/handex.env`; restart `handex.service`
+after edits.
+
 If `/etc/letsencrypt/live/482692.xyz/fullchain.pem` and `privkey.pem` exist,
 the installer enables direct HTTPS on port `17395`, making the PWA installable
 at `https://482692.xyz:17395/` without changing nginx. If those variables are
@@ -198,6 +287,7 @@ handex/
   runners/      reserved for future runner modules
   prompts/      prompt documentation
   plugins/      plugin documentation
+  skills/       default dynamic skill root
   logs/         runtime logs, ignored by git
   data/         SQLite runtime state, ignored by git
   systemd/      service unit
