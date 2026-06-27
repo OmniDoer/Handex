@@ -174,22 +174,49 @@ def detect_manifests(root: Path) -> list[str]:
     return found
 
 
-def agent_instruction_files(root: Path, max_files: int = 12) -> list[Path]:
+def inherited_agent_instruction_files(root: Path, max_files: int = 8) -> list[Path]:
+    files = []
+    search_dirs = list(reversed([root, *root.parents]))
+    for directory in search_dirs:
+        path = directory / "AGENTS.md"
+        if path.exists() and path.is_file() and not is_secret_like(path):
+            files.append(path)
+            if len(files) >= max_files:
+                break
+    return files
+
+
+def agent_instruction_files(root: Path, max_files: int = 12, exclude: set[Path] | None = None) -> list[Path]:
+    excluded = exclude or set()
     matches = []
     for current_root, dirnames, filenames in os.walk(root):
         dirnames[:] = sorted(dirname for dirname in dirnames if not should_skip_dir(dirname))
         if "AGENTS.md" not in filenames:
             continue
-        matches.append(Path(current_root) / "AGENTS.md")
+        path = Path(current_root) / "AGENTS.md"
+        try:
+            resolved = path.resolve()
+        except OSError:
+            resolved = path
+        if resolved in excluded:
+            continue
+        matches.append(path)
         if len(matches) >= max_files:
             break
     return matches
 
 
 def agent_instructions_context(root: Path) -> str:
-    files = agent_instruction_files(root)
+    inherited = inherited_agent_instruction_files(root)
+    seen = set()
+    for path in inherited:
+        try:
+            seen.add(path.resolve())
+        except OSError:
+            seen.add(path)
+    files = inherited + agent_instruction_files(root, exclude=seen)
     if not files:
-        return "No AGENTS.md files found inside the workspace."
+        return "No AGENTS.md files found in workspace ancestors or inside the workspace."
     sections = []
     for path in files:
         try:

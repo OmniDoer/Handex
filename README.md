@@ -130,10 +130,10 @@ same kind of patch surface they would normally inspect in a coding agent before
 clicking Execute.
 
 `context_pack` returns a Codex-style workspace orientation snapshot: Git status,
-recent commits, workspace `AGENTS.md` instructions, top-level manifests, and a
-bounded file tree. Secret-looking files are omitted from the tree, and
-secret-looking lines in instruction files are redacted before the pack is shown
-or copied to a web LLM.
+recent commits, inherited and workspace `AGENTS.md` instructions, top-level
+manifests, and a bounded file tree. Secret-looking files are omitted from the
+tree, and secret-looking lines in instruction files are redacted before the pack
+is shown or copied to a web LLM.
 
 `list_uploads` returns metadata and redacted text previews for files uploaded
 through the project page. Uploaded files live under `.handex_uploads/` inside
@@ -223,15 +223,17 @@ The pack includes:
 - project workspace path
 - `git status --short --branch`
 - recent commits
+- `AGENTS.md` files inherited from workspace ancestors
 - `AGENTS.md` files found inside the workspace
 - common manifests such as `README.md`, `requirements.txt`, `package.json`,
   `pyproject.toml`, and similar project entrypoints
 - a bounded file tree that skips bulky runtime folders
 
-Safe Mode keeps `context_pack` inside the project workspace. The pack is an
-orientation aid, not proof that the LLM has read every relevant file; the LLM
-should still request focused `read_file`, `grep`, or `git` commands before
-making implementation claims.
+Safe Mode keeps the active `context_pack` working directory inside the project
+workspace while still allowing inherited `AGENTS.md` files from ancestor
+directories to be summarized. The pack is an orientation aid, not proof that the
+LLM has read every relevant file; the LLM should still request focused
+`read_file`, `grep`, or `git` commands before making implementation claims.
 
 ## Workspace Uploads
 

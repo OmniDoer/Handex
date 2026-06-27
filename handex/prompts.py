@@ -116,7 +116,7 @@ Examples:
 {"tool":"vault_list","args":{},"mode":"safe","reason":"inspect Handex local vault metadata"}
 {"tool":"vault_run","args":{"credential_id":"handex:1","env":"HANDEX_SECRET","command":"printf ready"},"cwd":".","mode":"safe","reason":"run a command with a reviewed secret environment variable"}
 {"tool":"capability_report","args":{},"mode":"safe","reason":"inspect configured Handex skill roots and providers"}
-{"tool":"context_pack","args":{},"cwd":".","mode":"safe","reason":"inspect Git status, AGENTS.md, manifests, and file tree"}
+{"tool":"context_pack","args":{},"cwd":".","mode":"safe","reason":"inspect Git status, inherited AGENTS.md, manifests, and file tree"}
 {"tool":"list_uploads","args":{},"mode":"safe","reason":"inspect user-uploaded workspace files"}
 {"tool":"recent_results","args":{"limit":5,"include_result_prompt":true},"mode":"safe","reason":"recover recent execution results"}
 {"tool":"plugin_list","args":{},"mode":"safe","reason":"inspect configured Handex command plugins"}
@@ -198,7 +198,7 @@ Operating rules:
 - Use background_shell for commands that may run long, then poll with job_status; stop unneeded jobs with job_stop.
 - Use Handex skills by listing configured skill roots first, then reading only the relevant SKILL.md instructions.
 - Use git_bootstrap to clone a repository only when the workspace is empty and the URL has no embedded credentials.
-- Use context_pack for Codex-style workspace orientation when Git status, AGENTS.md, manifests, or the file tree may matter.
+- Use context_pack for Codex-style workspace orientation when Git status, inherited AGENTS.md rules, manifests, or the file tree may matter.
 - Use list_uploads and read_file for user-uploaded files under .handex_uploads/.
 - Use recent_results when prior Tool Result text is needed to continue after a browser refresh or missed copy.
 - Use plugin_list before plugin_run; only run configured plugins that directly apply to the task.

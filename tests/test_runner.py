@@ -157,6 +157,29 @@ class RunnerTests(unittest.TestCase):
             self.assertNotIn("should-not-leak", result.stdout)
             self.assertIn("Secret-looking file names omitted", result.stdout)
 
+    def test_context_pack_includes_inherited_and_nested_agents(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            parent = root / "parent"
+            workspace = parent / "workspace"
+            nested = workspace / "package"
+            nested.mkdir(parents=True)
+            (parent / "AGENTS.md").write_text(
+                "Inherited instruction.\napi_token: should-not-leak\n",
+                encoding="utf-8",
+            )
+            (workspace / "AGENTS.md").write_text("Workspace instruction.\n", encoding="utf-8")
+            (nested / "AGENTS.md").write_text("Nested instruction.\n", encoding="utf-8")
+
+            result = registry.run({"tool": "context_pack", "args": {}}, str(workspace), "safe")
+
+            self.assertEqual(result.exit_code, 0)
+            self.assertIn("Inherited instruction.", result.stdout)
+            self.assertIn("Workspace instruction.", result.stdout)
+            self.assertIn("Nested instruction.", result.stdout)
+            self.assertNotIn("should-not-leak", result.stdout)
+            self.assertEqual(result.stdout.count("Workspace instruction."), 1)
+
     def test_context_pack_safe_mode_blocks_outside_cwd(self):
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaises(ToolError):
