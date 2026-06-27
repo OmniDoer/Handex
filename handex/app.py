@@ -36,6 +36,7 @@ from .db import (
     update_project,
 )
 from .history import sanitize_log_for_display
+from .images import ImageError, resolve_workspace_image
 from .jobs import get_job_display, job_sse_message, list_project_job_displays, stop_job
 from .parser import parse_llm_reply
 from .plans import PlanError, normalize_plan_payload, plan_form_json
@@ -446,6 +447,24 @@ async def upload_project_file_route(
         await file.close()
     add_log(project_id, "workspace.upload", stdout=f"Uploaded {info.path} ({info.size} bytes)")
     return redirect(f"/projects/{project_id}#uploads")
+
+
+@app.get("/projects/{project_id}/image")
+def project_image_route(
+    project_id: int,
+    path: str,
+    _: None = Depends(require_auth),
+) -> FileResponse:
+    project = project_or_404(project_id)
+    try:
+        info = resolve_workspace_image(project.get("workspace_path") or ".", path)
+    except ImageError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return FileResponse(
+        info.path,
+        media_type=info.media_type,
+        headers={"Content-Disposition": "inline", "X-Content-Type-Options": "nosniff"},
+    )
 
 
 @app.post("/projects/{project_id}/uploads/delete")

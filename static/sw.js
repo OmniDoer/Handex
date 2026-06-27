@@ -1,4 +1,4 @@
-const CACHE_NAME = "handex-static-v3";
+const CACHE_NAME = "handex-static-v4";
 const STATIC_ASSETS = [
   "/",
   "/static/app.css",

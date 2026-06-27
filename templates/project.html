@@ -122,6 +122,11 @@
           <div><dt>Type</dt><dd>{{ upload.media_type }}</dd></div>
           <div><dt>Modified</dt><dd>{{ upload.modified_at }}</dd></div>
         </dl>
+        {% if upload.is_image %}
+          <a class="image-preview" href="/projects/{{ project.id }}/image?path={{ upload.path|urlencode }}" target="_blank" rel="noopener">
+            <img src="/projects/{{ project.id }}/image?path={{ upload.path|urlencode }}" alt="{{ upload.name }}">
+          </a>
+        {% endif %}
         {% if upload.preview %}
           <label>
             Text Preview

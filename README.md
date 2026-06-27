@@ -99,6 +99,7 @@ Built-in tools:
 - `capability_report`
 - `context_pack`
 - `list_uploads`
+- `view_image`
 - `recent_results`
 - `tool_batch`
 - `update_plan`
@@ -146,6 +147,12 @@ is shown or copied to a web LLM.
 through the project page. Uploaded files live under `.handex_uploads/` inside
 the workspace, so normal file tools can read, search, patch, or delete them
 after review.
+
+`view_image` verifies a workspace raster image, returns type/size/dimensions,
+and provides an authenticated Handex preview URL. It is intended for uploaded
+screenshots, generated figures, and local image artifacts. If the web LLM needs
+visual reasoning, the human should open the preview and upload or show the image
+to that model through its normal image interface.
 
 `recent_results` returns sanitized recent execution history for the current
 workspace, including command JSON, final command, stdout, stderr, and optionally
@@ -201,7 +208,8 @@ LLM how to behave like a coding agent inside the Hand Loop:
 - produce at most one next Tool Command per turn
 - request exact file reads and edits
 - apply focused Codex-style patch blocks or unified diffs through `apply_patch`
-- inspect user-provided files through `list_uploads` and `read_file`
+- inspect user-provided files through `list_uploads`, `view_image`, and
+  `read_file`
 - recover missed Tool Result text through `recent_results` or the project
   Execution History section
 - batch independent read-only inspections through `tool_batch`
@@ -267,6 +275,7 @@ review loop intact:
 - the human uploads a file from the browser
 - the Single-Step Prompt includes a compact uploaded-file inventory
 - the LLM can request `list_uploads` for metadata and redacted text previews
+- the LLM can request `view_image` for an authenticated Handex image preview URL
 - normal tools can read `.handex_uploads/name`, grep uploaded text, or process
   binary/image files with shell commands after review
 

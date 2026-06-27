@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from urllib.parse import quote
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -20,6 +21,7 @@ from ..config import settings
 from ..context import build_context_pack
 from ..db import get_project_plan, save_project_plan
 from ..history import project_logs_for_workspace
+from ..images import ImageError, image_info_payload, resolve_workspace_image
 from ..jobs import get_job_display, list_project_job_displays, project_id_for_workspace, start_background_shell, stop_job
 from ..plans import normalize_plan_payload, plan_form_json
 from ..plugins import find_plugin, list_plugins, plugin_argv
@@ -59,6 +61,7 @@ SAFE_BATCH_TOOLS = {
     "capability_report",
     "context_pack",
     "list_uploads",
+    "view_image",
     "recent_results",
     "plan_status",
     "job_status",
@@ -317,6 +320,8 @@ def preview_command(command: dict[str, Any]) -> str:
         return f"read_skill {args.get('skill_id') or args.get('name') or ''}"
     if tool in {"list_skills", "skill_pack", "list_vault_credentials", "vault_list", "capability_report", "context_pack", "list_uploads", "recent_results", "job_status", "plugin_list", "plan_status"}:
         return tool
+    if tool == "view_image":
+        return f"view_image {args.get('path') or ''}"
     if tool == "update_plan":
         args = command_args(command)
         plan = args.get("plan") or args.get("items") or []
@@ -1012,6 +1017,7 @@ def run_list_uploads(command: dict[str, Any], workspace: Path, mode: str) -> Too
             "name": item.name,
             "size": item.size,
             "media_type": item.media_type,
+            "is_image": item.is_image,
             "modified_at": item.modified_at,
             "preview": item.preview,
             "preview_omitted": item.preview_omitted,
@@ -1020,6 +1026,26 @@ def run_list_uploads(command: dict[str, Any], workspace: Path, mode: str) -> Too
     ]
     output = json.dumps(uploads, ensure_ascii=False, indent=2)
     return ToolResult("list_uploads", command, mode, str(workspace), "list_uploads", 0, output + "\n", "")
+
+
+def image_url_for_workspace(workspace: Path, relative_path: str) -> str:
+    try:
+        project_id = project_id_for_workspace(workspace)
+    except Exception:
+        return ""
+    return f"/projects/{project_id}/image?path={quote(relative_path, safe='')}"
+
+
+def run_view_image(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    args = command_args(command)
+    try:
+        info = resolve_workspace_image(workspace, args.get("path") or args.get("file") or "")
+    except ImageError as exc:
+        raise ToolError(str(exc)) from exc
+    payload = image_info_payload(info, url=image_url_for_workspace(workspace, info.relative_path))
+    payload["note"] = "Open the URL in Handex to inspect the image, or upload the image separately to the web LLM when visual reasoning is required."
+    output = json.dumps(payload, ensure_ascii=False, indent=2)
+    return ToolResult("view_image", command, mode, str(info.path.parent), f"view_image {info.relative_path}", 0, output + "\n", "")
 
 
 def run_recent_results(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
@@ -1289,6 +1315,7 @@ registry.register("vault_run", run_vault_run)
 registry.register("capability_report", run_capability_report)
 registry.register("context_pack", run_context_pack)
 registry.register("list_uploads", run_list_uploads)
+registry.register("view_image", run_view_image)
 registry.register("recent_results", run_recent_results)
 registry.register("tool_batch", run_tool_batch)
 registry.register("update_plan", run_update_plan)

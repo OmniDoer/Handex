@@ -49,7 +49,10 @@ same reviewed one-command loop as built-in tools.
 Workspace uploads are exposed through the project page and the `list_uploads`
 tool. Uploaded files live under `.handex_uploads/` inside the workspace, and
 the Single-Step Agent Prompt includes a compact inventory so the LLM can ask
-for focused `read_file`, `grep`, or shell processing of user-provided files.
+for focused `read_file`, `view_image`, `grep`, or shell processing of
+user-provided files. `view_image` returns image metadata plus an authenticated
+Handex preview URL that the human can open or use when uploading the image to a
+web LLM's image interface.
 
 Git bootstrap is exposed through project forms and the `git_bootstrap` tool.
 It lets a web LLM request a reviewed clone into an empty workspace without

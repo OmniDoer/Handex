@@ -10,6 +10,7 @@ from typing import BinaryIO
 
 from .config import settings
 from .context import is_secret_like, redact_text
+from .images import ImageError, resolve_workspace_image
 
 
 UPLOAD_DIRNAME = ".handex_uploads"
@@ -28,6 +29,7 @@ class UploadedFileInfo:
     size: int
     media_type: str
     modified_at: str
+    is_image: bool = False
     preview: str = ""
     preview_omitted: str = ""
 
@@ -137,6 +139,12 @@ def text_preview(path: Path, max_chars: int = 1600) -> tuple[str, str]:
 def file_info(root: Path, path: Path) -> UploadedFileInfo:
     stat = path.stat()
     media_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+    try:
+        image = resolve_workspace_image(root.parent, Path(UPLOAD_DIRNAME) / path.relative_to(root))
+        media_type = image.media_type
+        is_image = True
+    except ImageError:
+        is_image = False
     upload_path = str(path.relative_to(root))
     preview, preview_omitted = text_preview(path)
     return UploadedFileInfo(
@@ -146,6 +154,7 @@ def file_info(root: Path, path: Path) -> UploadedFileInfo:
         size=stat.st_size,
         media_type=media_type,
         modified_at=datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat(timespec="seconds"),
+        is_image=is_image,
         preview=preview,
         preview_omitted=preview_omitted,
     )
@@ -196,7 +205,7 @@ def upload_inventory_prompt(workspace: str | Path, *, max_files: int = 40, max_c
     uploads = list_workspace_uploads(workspace, max_files=max_files)
     if not uploads:
         return "No uploaded workspace files."
-    lines = ["Uploaded workspace files live under .handex_uploads/ and can be inspected with list_uploads or read_file.", ""]
+    lines = ["Uploaded workspace files live under .handex_uploads/ and can be inspected with list_uploads, view_image, or read_file.", ""]
     for item in uploads:
         lines.append(f"- {item.path} ({item.size} bytes, {item.media_type})")
         if item.preview:

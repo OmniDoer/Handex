@@ -1,4 +1,5 @@
 import io
+import base64
 import tempfile
 import types
 import unittest
@@ -6,6 +7,11 @@ from pathlib import Path
 
 from handex import uploads
 from handex.tools.runner import registry
+
+
+PNG_1X1 = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
+)
 
 
 class UploadTests(unittest.TestCase):
@@ -63,6 +69,18 @@ class UploadTests(unittest.TestCase):
             self.assertEqual(result.exit_code, 0)
             self.assertIn(".handex_uploads/note.txt", result.stdout)
             self.assertIn("tool-visible", result.stdout)
+
+    def test_image_uploads_are_marked_as_images(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            uploads.settings = types.SimpleNamespace(max_upload_bytes=1024)
+            info = uploads.save_workspace_upload(tmp, "screenshot.png", io.BytesIO(PNG_1X1))
+
+            listed = uploads.list_workspace_uploads(tmp)
+            result = registry.run({"tool": "list_uploads", "args": {}}, tmp, "safe")
+
+            self.assertTrue(info.is_image)
+            self.assertTrue(listed[0].is_image)
+            self.assertIn('"is_image": true', result.stdout)
 
 
 if __name__ == "__main__":
