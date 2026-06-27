@@ -52,6 +52,31 @@ class CapabilityTests(unittest.TestCase):
             self.assertEqual(skill.name, "release-manager")
             self.assertIn("Follow the release checklist.", content)
 
+    def test_read_skill_file_reads_referenced_files_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            skill_dir = Path(tmp) / "release-manager"
+            references = skill_dir / "references"
+            references.mkdir(parents=True)
+            (skill_dir / "SKILL.md").write_text("# Release Manager\n", encoding="utf-8")
+            (references / "details.md").write_text("Release details\napi_token=must-not-appear\n", encoding="utf-8")
+            (skill_dir / ".env").write_text("SECRET=hidden\n", encoding="utf-8")
+            capabilities.settings = types.SimpleNamespace(
+                skill_roots=[Path(tmp)],
+                vault_metadata_command="",
+                help_commands=[],
+            )
+
+            skill, relative_path, content = capabilities.read_skill_file("release-manager", "references/details.md")
+
+            self.assertEqual(skill.skill_id, "root1:release-manager")
+            self.assertEqual(relative_path, "references/details.md")
+            self.assertIn("Release details", content)
+            self.assertNotIn("must-not-appear", content)
+            with self.assertRaises(PermissionError):
+                capabilities.read_skill_file("release-manager", "../outside.md")
+            with self.assertRaises(PermissionError):
+                capabilities.read_skill_file("release-manager", ".env")
+
     def test_vault_metadata_provider_is_sanitized(self):
         with tempfile.TemporaryDirectory() as tmp:
             emitter = Path(tmp) / "emit.py"

@@ -60,6 +60,25 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(result.exit_code, 0)
             self.assertIn("Use this skill for tests.", result.stdout)
 
+    def test_read_skill_file_tool_reads_referenced_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            skill_dir = Path(tmp) / "example"
+            reference_dir = skill_dir / "references"
+            reference_dir.mkdir(parents=True)
+            (skill_dir / "SKILL.md").write_text("# Example\n", encoding="utf-8")
+            (reference_dir / "details.md").write_text("Referenced details.\n", encoding="utf-8")
+            capabilities.settings = types.SimpleNamespace(skill_roots=[Path(tmp)], vault_metadata_command="", help_commands=[])
+
+            result = registry.run(
+                {"tool": "read_skill_file", "args": {"skill_id": "example", "path": "references/details.md"}},
+                tmp,
+                "safe",
+            )
+
+            self.assertEqual(result.exit_code, 0)
+            self.assertIn('"path": "references/details.md"', result.stdout)
+            self.assertIn("Referenced details.", result.stdout)
+
     def test_capability_search_tool_returns_matching_builtin(self):
         capabilities.settings = types.SimpleNamespace(skill_roots=[], vault_metadata_command="", help_commands=[])
         with tempfile.TemporaryDirectory() as tmp:

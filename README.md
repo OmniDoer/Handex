@@ -92,6 +92,7 @@ Built-in tools:
 - `apply_patch`
 - `list_skills`
 - `read_skill`
+- `read_skill_file`
 - `skill_pack`
 - `list_vault_credentials`
 - `vault_list`
@@ -335,7 +336,15 @@ The built-in skill tools are:
 
 - `list_skills`: return skill ids, names, descriptions, and source roots
 - `read_skill`: read one configured `SKILL.md` by skill id or unique name
+- `read_skill_file`: read a specific relative text file referenced by that
+  skill, such as `references/details.md` or `scripts/helper.py`
 - `skill_pack`: return a compact skill catalog prompt
+
+`read_skill_file` is intentionally narrow: paths are relative to the selected
+skill directory, parent traversal is rejected, and secret-looking filenames are
+blocked. This supports Codex-style progressive disclosure where `SKILL.md`
+points to a small number of extra files instead of loading every asset up
+front.
 
 Handex only reads skills from configured roots. It does not hard-code or commit
 the server's current Codex/OmniDoer skills.

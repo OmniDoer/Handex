@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from ..bootstrap import BootstrapError, bootstrap_workspace_from_git, redacted_repo_url
-from ..capabilities import configured_capability_report, list_skills, list_vault_metadata, read_skill, search_capabilities, skill_pack_prompt
+from ..capabilities import configured_capability_report, list_skills, list_vault_metadata, read_skill, read_skill_file, search_capabilities, skill_pack_prompt
 from ..config import settings
 from ..context import build_context_pack
 from ..db import get_project_plan, save_project_plan
@@ -56,6 +56,7 @@ SAFE_BATCH_TOOLS = {
     "grep",
     "list_skills",
     "read_skill",
+    "read_skill_file",
     "skill_pack",
     "list_vault_credentials",
     "vault_list",
@@ -321,6 +322,8 @@ def preview_command(command: dict[str, Any]) -> str:
         return f"tool_batch {count} command(s)"
     if tool == "read_skill":
         return f"read_skill {args.get('skill_id') or args.get('name') or ''}"
+    if tool == "read_skill_file":
+        return f"read_skill_file {args.get('skill_id') or args.get('name') or ''} {args.get('path') or ''}"
     if tool in {"list_skills", "skill_pack", "list_vault_credentials", "vault_list", "capability_report", "context_pack", "list_uploads", "recent_results", "job_status", "plugin_list", "plan_status"}:
         return tool
     if tool == "capability_search":
@@ -938,6 +941,31 @@ def run_read_skill(command: dict[str, Any], workspace: Path, mode: str) -> ToolR
     return ToolResult("read_skill", command, mode, str(workspace), f"read_skill {identifier}", 0, clamp_output(output), "")
 
 
+def run_read_skill_file(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    args = command_args(command)
+    identifier = str(args.get("skill_id") or args.get("name") or "")
+    relative_path = str(args.get("path") or args.get("file") or "")
+    if not identifier:
+        raise ToolError("read_skill_file args.skill_id is required")
+    try:
+        max_chars = int(args.get("max_chars") or settings.max_output_chars)
+    except (TypeError, ValueError):
+        max_chars = settings.max_output_chars
+    try:
+        skill, path, content = read_skill_file(identifier, relative_path, limit=max_chars)
+    except (KeyError, ValueError, PermissionError, FileNotFoundError) as exc:
+        raise ToolError(str(exc)) from exc
+    header = {
+        "skill_id": skill.skill_id,
+        "name": skill.name,
+        "description": skill.description,
+        "root": skill.root,
+        "path": path,
+    }
+    output = json.dumps(header, ensure_ascii=False, indent=2) + "\n\n" + content
+    return ToolResult("read_skill_file", command, mode, str(workspace), f"read_skill_file {identifier} {path}", 0, clamp_output(output), "")
+
+
 def run_skill_pack(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
     return ToolResult("skill_pack", command, mode, str(workspace), "skill_pack", 0, clamp_output(skill_pack_prompt()) + "\n", "")
 
@@ -1349,6 +1377,7 @@ registry.register("search_files", run_search_files)
 registry.register("grep", run_grep)
 registry.register("list_skills", run_list_skills)
 registry.register("read_skill", run_read_skill)
+registry.register("read_skill_file", run_read_skill_file)
 registry.register("skill_pack", run_skill_pack)
 registry.register("list_vault_credentials", run_list_vault_credentials)
 registry.register("vault_list", run_vault_list)

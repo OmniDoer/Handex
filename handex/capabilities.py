@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import settings
+from .context import is_secret_like, redact_text
 
 
 MAX_SKILL_CHARS = 24000
@@ -32,6 +33,7 @@ BUILTIN_TOOL_CATALOG: list[dict[str, str]] = [
     {"id": "apply_patch", "description": "Apply a unified diff or Codex-style patch block."},
     {"id": "list_skills", "description": "List configured Handex skills."},
     {"id": "read_skill", "description": "Read one configured SKILL.md instruction file."},
+    {"id": "read_skill_file", "description": "Read a referenced text file inside a configured skill directory."},
     {"id": "skill_pack", "description": "Return a compact prompt catalog of configured skills."},
     {"id": "list_vault_credentials", "description": "List external vault credential metadata without secrets."},
     {"id": "vault_list", "description": "List local Handex vault item metadata without secrets."},
@@ -107,6 +109,14 @@ def _skill_id(root_index: int, root: Path, path: Path) -> str:
     return f"root{root_index}:{relative}"
 
 
+def _path_is_relative_to(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
+
+
 def list_skills() -> list[SkillInfo]:
     skills: list[SkillInfo] = []
     for index, root in enumerate(settings.skill_roots, start=1):
@@ -150,17 +160,35 @@ def read_skill(identifier: str) -> tuple[SkillInfo, str]:
     path = Path(skill.path).resolve()
     if path.name != "SKILL.md":
         raise PermissionError("Only SKILL.md files can be read through the skill bridge")
-    allowed = False
-    for root in settings.skill_roots:
-        try:
-            path.relative_to(root)
-            allowed = True
-            break
-        except ValueError:
-            continue
-    if not allowed:
+    if not any(_path_is_relative_to(path, root) for root in settings.skill_roots):
         raise PermissionError("Skill path is outside configured Handex skill roots")
     return skill, _read_text(path, MAX_SKILL_CHARS)
+
+
+def read_skill_file(identifier: str, relative_path: str, limit: int = MAX_SKILL_CHARS) -> tuple[SkillInfo, str, str]:
+    skill = _find_skill(identifier)
+    if not skill:
+        raise KeyError(f"Skill not found or ambiguous: {identifier}")
+    skill_file = Path(skill.path).resolve()
+    skill_dir = skill_file.parent
+    requested = Path(str(relative_path or "").replace("\\", "/"))
+    if not str(relative_path or "").strip():
+        raise ValueError("Skill file path is required")
+    if requested.is_absolute():
+        raise PermissionError("Skill file path must be relative to the skill directory")
+    path = (skill_dir / requested).resolve()
+    if not _path_is_relative_to(path, skill_dir):
+        raise PermissionError("Skill file path must stay inside the selected skill directory")
+    if not path.exists() or not path.is_file():
+        raise FileNotFoundError(f"Skill file not found: {relative_path}")
+    if is_secret_like(path):
+        raise PermissionError(f"Secret-looking skill files cannot be read through read_skill_file: {path.name}")
+    try:
+        raw_limit = int(limit or MAX_SKILL_CHARS)
+    except (TypeError, ValueError):
+        raw_limit = MAX_SKILL_CHARS
+    parsed_limit = max(1000, min(raw_limit, MAX_SKILL_CHARS))
+    return skill, str(path.relative_to(skill_dir)), redact_text(_read_text(path, parsed_limit))
 
 
 def skill_pack_prompt() -> str:
@@ -175,6 +203,8 @@ def skill_pack_prompt() -> str:
             "",
             "Use a skill only when it directly applies. If you need full instructions, ask Handex for:",
             '{"tool":"read_skill","args":{"skill_id":"root1:example-skill"},"reason":"load relevant skill instructions"}',
+            "If SKILL.md references a relative file, ask Handex for:",
+            '{"tool":"read_skill_file","args":{"skill_id":"root1:example-skill","path":"references/details.md"},"reason":"load referenced skill material"}',
         ]
     )
     return "\n".join(lines)

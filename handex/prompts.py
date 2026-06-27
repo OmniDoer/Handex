@@ -31,6 +31,7 @@ TOOL_NAMES = [
     "apply_patch",
     "list_skills",
     "read_skill",
+    "read_skill_file",
     "skill_pack",
     "list_vault_credentials",
     "vault_list",
@@ -100,7 +101,7 @@ DEFAULT_TOOL_PROTOCOL = """When you need Linux tools, output exactly one Tool Co
 
 Schema:
 {
-  "tool": "shell | background_shell | python | read_file | write_file | append_file | replace_file | delete_file | list_files | search_files | grep | git | git_bootstrap | apply_patch | list_skills | read_skill | skill_pack | list_vault_credentials | vault_list | vault_run | capability_report | capability_search | context_pack | list_uploads | download_file | view_image | recent_results | tool_batch | update_plan | plan_status | job_status | job_stop | plugin_list | plugin_run",
+  "tool": "shell | background_shell | python | read_file | write_file | append_file | replace_file | delete_file | list_files | search_files | grep | git | git_bootstrap | apply_patch | list_skills | read_skill | read_skill_file | skill_pack | list_vault_credentials | vault_list | vault_run | capability_report | capability_search | context_pack | list_uploads | download_file | view_image | recent_results | tool_batch | update_plan | plan_status | job_status | job_stop | plugin_list | plugin_run",
   "args": {},
   "cwd": ".",
   "mode": "safe",
@@ -119,6 +120,7 @@ Examples:
 {"tool":"apply_patch","args":{"patch":"*** Begin Patch\\n*** Update File: file.txt\\n@@\\n-old\\n+new\\n*** End Patch\\n"},"cwd":".","mode":"safe","reason":"apply a reviewed Codex-style patch"}
 {"tool":"list_skills","args":{},"mode":"safe","reason":"inspect available Handex skills"}
 {"tool":"read_skill","args":{"skill_id":"root1:example-skill"},"mode":"safe","reason":"load relevant skill instructions"}
+{"tool":"read_skill_file","args":{"skill_id":"root1:example-skill","path":"references/details.md"},"mode":"safe","reason":"load a referenced file from the selected skill"}
 {"tool":"list_vault_credentials","args":{},"mode":"safe","reason":"inspect available credential metadata without secrets"}
 {"tool":"vault_list","args":{},"mode":"safe","reason":"inspect Handex local vault metadata"}
 {"tool":"vault_run","args":{"credential_id":"handex:1","env":"HANDEX_SECRET","command":"printf ready"},"cwd":".","mode":"safe","reason":"run a command with a reviewed secret environment variable"}
@@ -213,7 +215,7 @@ Operating rules:
 - Keep secrets out of chat. Vault access is metadata-only unless the human explicitly runs a local Vault-backed command after review.
 - Use background_shell for commands that may run long, then poll with job_status; stop unneeded jobs with job_stop.
 - Use capability_search when the right built-in tool, skill, plugin, or credential metadata is unclear.
-- Use Handex skills by listing configured skill roots first, then reading only the relevant SKILL.md instructions.
+- Use Handex skills by listing configured skill roots first, then reading only the relevant SKILL.md instructions; if that SKILL.md references relative files, use read_skill_file for the specific referenced paths.
 - Use git_bootstrap to clone a repository only when the workspace is empty and the URL has no embedded credentials.
 - Use context_pack for Codex-style workspace orientation when Git status, inherited AGENTS.md rules, manifests, or the file tree may matter.
 - Use list_uploads, view_image, download_file, and read_file for user-uploaded files and generated artifacts.

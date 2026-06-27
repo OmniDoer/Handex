@@ -50,6 +50,11 @@ Capability discovery is exposed through `capability_search`. It gives the LLM a
 Codex `tool_search`-style way to search built-in tools, skills, plugins, vault
 metadata, and help command labels before choosing the next reviewed command.
 
+Referenced skill files are exposed through `read_skill_file`. After reading a
+relevant `SKILL.md`, the LLM can request only the specific relative files named
+by that skill, keeping Codex-style progressive disclosure without loading an
+entire skill directory.
+
 Workspace uploads are exposed through the project page and the `list_uploads`
 tool. Uploaded files live under `.handex_uploads/` inside the workspace, and
 the Single-Step Agent Prompt includes a compact inventory so the LLM can ask
