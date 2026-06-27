@@ -37,7 +37,8 @@ another web LLM session.
 
 When a parsed Tool Command would change files, Handex renders a read-only Diff
 Preview before execution. This preview covers `write_file`, `append_file`,
-`replace_file`, `delete_file`, and `apply_patch`, and gives the human a
+`replace_file`, `delete_file`, and `apply_patch`; `apply_patch` accepts unified
+diffs and Codex-style `*** Begin Patch` blocks. This gives the human a
 Codex-like review surface before approving the command.
 
 Configured command plugins are exposed through `plugin_list` and `plugin_run`.

@@ -301,6 +301,9 @@ def preview_command(command: dict[str, Any]) -> str:
     if tool == "git_bootstrap":
         return f"git clone {redacted_repo_url(str(args.get('repo_url') or args.get('url') or ''))}"
     if tool == "apply_patch":
+        patch = str(args.get("patch") or args.get("diff") or "")
+        if is_codex_patch(patch):
+            return "codex apply_patch --check && codex apply_patch"
         return "git apply --check && git apply"
     if tool in {"read_file", "write_file", "append_file", "replace_file", "delete_file", "list_files", "search_files", "grep"}:
         return f"{tool} {args.get('path') or args.get('root') or '.'}"
@@ -482,6 +485,9 @@ def run_git_bootstrap(command: dict[str, Any], workspace: Path, mode: str) -> To
 def validate_patch_paths(patch: str, mode: str) -> None:
     if mode != "safe":
         return
+    if is_codex_patch(patch):
+        validate_codex_patch_paths(patch)
+        return
     paths: list[str] = []
     for line in patch.splitlines():
         if line.startswith(("--- ", "+++ ")):
@@ -500,6 +506,216 @@ def validate_patch_paths(patch: str, mode: str) -> None:
             raise ToolError(f"Safe Mode blocks patch path outside workspace: {raw}")
 
 
+def is_codex_patch(patch: str) -> bool:
+    return patch.lstrip().startswith("*** Begin Patch")
+
+
+def validate_codex_patch_path(path_value: str) -> None:
+    path = Path(path_value)
+    if not path_value.strip() or path.is_absolute() or ".." in path.parts:
+        raise ToolError(f"Safe Mode blocks patch path outside workspace: {path_value}")
+
+
+def validate_codex_patch_paths(patch: str) -> None:
+    for operation in parse_codex_patch(patch):
+        validate_codex_patch_path(str(operation["path"]))
+        if operation.get("move_to"):
+            validate_codex_patch_path(str(operation["move_to"]))
+
+
+def parse_codex_patch(patch: str) -> list[dict[str, Any]]:
+    lines = patch.splitlines()
+    while lines and not lines[0].strip():
+        lines.pop(0)
+    while lines and not lines[-1].strip():
+        lines.pop()
+    if not lines or lines[0] != "*** Begin Patch":
+        raise ToolError("Codex patch must start with *** Begin Patch")
+    if lines[-1] != "*** End Patch":
+        raise ToolError("Codex patch must end with *** End Patch")
+    operations: list[dict[str, Any]] = []
+    index = 1
+    while index < len(lines) - 1:
+        line = lines[index]
+        if line.startswith("*** Add File: "):
+            path = line.split(": ", 1)[1].strip()
+            index += 1
+            content = []
+            while index < len(lines) - 1 and not lines[index].startswith("*** "):
+                if not lines[index].startswith("+"):
+                    raise ToolError(f"Add File lines must start with +: {path}")
+                content.append(lines[index][1:])
+                index += 1
+            operations.append({"action": "add", "path": path, "content": content})
+            continue
+        if line.startswith("*** Delete File: "):
+            path = line.split(": ", 1)[1].strip()
+            operations.append({"action": "delete", "path": path})
+            index += 1
+            continue
+        if line.startswith("*** Update File: "):
+            path = line.split(": ", 1)[1].strip()
+            index += 1
+            move_to = ""
+            hunks: list[list[tuple[str, str]]] = []
+            current_hunk: list[tuple[str, str]] | None = None
+            while index < len(lines) - 1:
+                body_line = lines[index]
+                if body_line.startswith(("*** Add File: ", "*** Delete File: ", "*** Update File: ")):
+                    break
+                if body_line.startswith("*** Move to: "):
+                    move_to = body_line.split(": ", 1)[1].strip()
+                    index += 1
+                    continue
+                if body_line == "*** End of File":
+                    index += 1
+                    continue
+                if body_line.startswith("@@"):
+                    current_hunk = []
+                    hunks.append(current_hunk)
+                    index += 1
+                    continue
+                if current_hunk is None:
+                    if not body_line.strip():
+                        index += 1
+                        continue
+                    raise ToolError(f"Update File hunk must start with @@: {path}")
+                if not body_line or body_line[0] not in {" ", "-", "+"}:
+                    raise ToolError(f"Update File hunk line must start with space, -, or +: {path}")
+                current_hunk.append((body_line[0], body_line[1:]))
+                index += 1
+            if not hunks and not move_to:
+                raise ToolError(f"Update File requires a hunk or move target: {path}")
+            operations.append({"action": "update", "path": path, "move_to": move_to, "hunks": hunks})
+            continue
+        raise ToolError(f"Unsupported Codex patch header: {line}")
+    if not operations:
+        raise ToolError("Codex patch contains no file operations")
+    return operations
+
+
+def read_codex_patch_file(path: Path) -> list[str]:
+    if not path.exists():
+        raise ToolError(f"Patch target does not exist: {path}")
+    if path.is_dir():
+        raise ToolError(f"Patch target is a directory: {path}")
+    return path.read_text(encoding="utf-8", errors="replace").splitlines()
+
+
+def find_subsequence(lines: list[str], block: list[str], start: int) -> int:
+    if not block:
+        return max(0, min(start, len(lines)))
+    last_start = len(lines) - len(block)
+    for position in range(max(0, start), last_start + 1):
+        if lines[position : position + len(block)] == block:
+            return position
+    raise ToolError("Codex patch hunk did not match the target file")
+
+
+def apply_codex_hunks(lines: list[str], hunks: list[list[tuple[str, str]]]) -> list[str]:
+    updated = list(lines)
+    cursor = 0
+    for hunk in hunks:
+        old_block = [text for op, text in hunk if op in {" ", "-"}]
+        new_block = [text for op, text in hunk if op in {" ", "+"}]
+        position = find_subsequence(updated, old_block, cursor)
+        updated[position : position + len(old_block)] = new_block
+        cursor = position + len(new_block)
+    return updated
+
+
+def codex_patch_target(cwd: Path, raw_path: str) -> Path:
+    return (cwd / raw_path).resolve()
+
+
+def codex_file_text(lines: list[str]) -> str:
+    return "\n".join(lines) + ("\n" if lines else "")
+
+
+def run_codex_apply_patch(command: dict[str, Any], workspace: Path, mode: str, cwd: Path, patch: str, check_only: bool) -> ToolResult:
+    if mode == "safe":
+        validate_codex_patch_paths(patch)
+    operations = parse_codex_patch(patch)
+    virtual_files: dict[Path, list[str] | None] = {}
+    written_paths: set[Path] = set()
+
+    def current_lines(path: Path) -> list[str]:
+        if path in virtual_files:
+            value = virtual_files[path]
+            if value is None:
+                raise ToolError(f"Patch target does not exist: {path}")
+            return list(value)
+        return read_codex_patch_file(path)
+
+    for operation in operations:
+        target = codex_patch_target(cwd, str(operation["path"]))
+        if mode == "safe" and not is_relative_to(target, workspace):
+            raise ToolError(f"Safe Mode patch target must stay inside workspace: {target}")
+        action = operation["action"]
+        if action == "add":
+            if target in virtual_files:
+                if virtual_files[target] is not None:
+                    raise ToolError(f"Patch add target already exists: {target}")
+            elif target.exists():
+                raise ToolError(f"Patch add target already exists: {target}")
+            virtual_files[target] = list(operation["content"])
+            written_paths.add(target)
+        elif action == "delete":
+            current_lines(target)
+            virtual_files[target] = None
+            written_paths.add(target)
+        elif action == "update":
+            updated = apply_codex_hunks(current_lines(target), operation.get("hunks", []))
+            move_to = str(operation.get("move_to") or "")
+            if move_to:
+                destination = codex_patch_target(cwd, move_to)
+                if mode == "safe" and not is_relative_to(destination, workspace):
+                    raise ToolError(f"Safe Mode patch target must stay inside workspace: {destination}")
+                if destination in virtual_files:
+                    if virtual_files[destination] is not None:
+                        raise ToolError(f"Patch move target already exists: {destination}")
+                elif destination.exists():
+                    raise ToolError(f"Patch move target already exists: {destination}")
+                virtual_files[target] = None
+                virtual_files[destination] = updated
+                written_paths.update({target, destination})
+            else:
+                virtual_files[target] = updated
+                written_paths.add(target)
+        else:
+            raise ToolError(f"Unsupported Codex patch action: {action}")
+
+    if check_only:
+        return ToolResult(
+            "apply_patch",
+            command,
+            mode,
+            str(cwd),
+            "codex apply_patch --check",
+            0,
+            f"Codex patch check passed for {len(operations)} operation(s).\n",
+            "",
+        )
+
+    for path, lines in virtual_files.items():
+        if lines is None:
+            if path.exists():
+                path.unlink()
+            continue
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(codex_file_text(lines), encoding="utf-8")
+    return ToolResult(
+        "apply_patch",
+        command,
+        mode,
+        str(cwd),
+        "codex apply_patch",
+        0,
+        f"Applied Codex patch to {len(written_paths)} file(s).\n",
+        "",
+    )
+
+
 def run_apply_patch(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
     cwd = resolve_cwd(command, workspace, mode)
     args = command_args(command)
@@ -507,6 +723,8 @@ def run_apply_patch(command: dict[str, Any], workspace: Path, mode: str) -> Tool
     check_only = bool(args.get("check_only") or False)
     if not patch.strip():
         raise ToolError("apply_patch args.patch is required")
+    if is_codex_patch(patch):
+        return run_codex_apply_patch(command, workspace, mode, cwd, patch, check_only)
     validate_patch_paths(patch, mode)
     with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False) as handle:
         handle.write(patch)

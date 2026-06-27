@@ -124,8 +124,11 @@ The runner is plugin-ready through `ToolRegistry`. Future tools can register a
 callable that receives the parsed command, resolved workspace, and mode, then
 returns a `ToolResult`.
 
-`apply_patch` accepts a unified diff and runs `git apply --check` before
-applying it. In Safe Mode, absolute paths and `..` paths are rejected.
+`apply_patch` accepts both unified diffs and Codex-style
+`*** Begin Patch` blocks. Unified diffs run through `git apply --check` before
+applying; Codex-style blocks are parsed and checked before any file write so a
+failed later hunk does not leave a partial edit. In Safe Mode, absolute paths
+and `..` paths are rejected.
 
 Before execution, Handex shows a unified Diff Preview for file-changing tools:
 `write_file`, `append_file`, `replace_file`, `delete_file`, and `apply_patch`.
@@ -197,7 +200,7 @@ LLM how to behave like a coding agent inside the Hand Loop:
 - bootstrap an empty workspace from Git through `git_bootstrap`
 - produce at most one next Tool Command per turn
 - request exact file reads and edits
-- apply focused unified diffs through `apply_patch`
+- apply focused Codex-style patch blocks or unified diffs through `apply_patch`
 - inspect user-provided files through `list_uploads` and `read_file`
 - recover missed Tool Result text through `recent_results` or the project
   Execution History section

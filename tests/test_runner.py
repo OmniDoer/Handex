@@ -92,6 +92,79 @@ class RunnerTests(unittest.TestCase):
             with self.assertRaises(ToolError):
                 registry.run({"tool": "apply_patch", "args": {"patch": patch}, "cwd": "."}, tmp, "safe")
 
+    def test_codex_apply_patch_updates_workspace_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "note.txt"
+            path.write_text("alpha\nbeta\ngamma\n", encoding="utf-8")
+            patch = (
+                "*** Begin Patch\n"
+                "*** Update File: note.txt\n"
+                "@@\n"
+                " alpha\n"
+                "-beta\n"
+                "+delta\n"
+                " gamma\n"
+                "*** End Patch\n"
+            )
+
+            result = registry.run({"tool": "apply_patch", "args": {"patch": patch}, "cwd": "."}, tmp, "safe")
+
+            self.assertEqual(result.exit_code, 0)
+            self.assertEqual(path.read_text(encoding="utf-8"), "alpha\ndelta\ngamma\n")
+
+    def test_codex_apply_patch_adds_and_deletes_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            old_path = Path(tmp) / "old.txt"
+            new_path = Path(tmp) / "new.txt"
+            old_path.write_text("remove me\n", encoding="utf-8")
+            patch = (
+                "*** Begin Patch\n"
+                "*** Delete File: old.txt\n"
+                "*** Add File: new.txt\n"
+                "+created\n"
+                "+file\n"
+                "*** End Patch\n"
+            )
+
+            result = registry.run({"tool": "apply_patch", "args": {"patch": patch}, "cwd": "."}, tmp, "safe")
+
+            self.assertEqual(result.exit_code, 0)
+            self.assertFalse(old_path.exists())
+            self.assertEqual(new_path.read_text(encoding="utf-8"), "created\nfile\n")
+
+    def test_codex_apply_patch_check_only_does_not_write(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "note.txt"
+            path.write_text("old\n", encoding="utf-8")
+            patch = (
+                "*** Begin Patch\n"
+                "*** Update File: note.txt\n"
+                "@@\n"
+                "-old\n"
+                "+new\n"
+                "*** End Patch\n"
+            )
+
+            result = registry.run({"tool": "apply_patch", "args": {"patch": patch, "check_only": True}, "cwd": "."}, tmp, "safe")
+
+            self.assertEqual(result.exit_code, 0)
+            self.assertIn("check passed", result.stdout)
+            self.assertEqual(path.read_text(encoding="utf-8"), "old\n")
+
+    def test_codex_apply_patch_safe_mode_blocks_parent_paths(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            patch = (
+                "*** Begin Patch\n"
+                "*** Update File: ../note.txt\n"
+                "@@\n"
+                "-old\n"
+                "+new\n"
+                "*** End Patch\n"
+            )
+
+            with self.assertRaises(ToolError):
+                registry.run({"tool": "apply_patch", "args": {"patch": patch}, "cwd": "."}, tmp, "safe")
+
     def test_preview_write_file_shows_unified_diff_without_writing(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "note.txt"

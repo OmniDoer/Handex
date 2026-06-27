@@ -113,7 +113,7 @@ Examples:
 {"tool":"write_file","args":{"path":"notes.txt","content":"hello\\n"},"mode":"safe","reason":"create a note"}
 {"tool":"git","args":{"args":["status","--short"]},"cwd":".","mode":"safe","reason":"inspect git status"}
 {"tool":"git_bootstrap","args":{"repo_url":"https://github.com/org/repo.git","branch":"main","depth":1},"mode":"safe","reason":"clone the target repository into an empty workspace"}
-{"tool":"apply_patch","args":{"patch":"diff --git a/file.txt b/file.txt\\n--- a/file.txt\\n+++ b/file.txt\\n@@ -1 +1 @@\\n-old\\n+new\\n"},"cwd":".","mode":"safe","reason":"apply a reviewed unified diff"}
+{"tool":"apply_patch","args":{"patch":"*** Begin Patch\\n*** Update File: file.txt\\n@@\\n-old\\n+new\\n*** End Patch\\n"},"cwd":".","mode":"safe","reason":"apply a reviewed Codex-style patch"}
 {"tool":"list_skills","args":{},"mode":"safe","reason":"inspect available Handex skills"}
 {"tool":"read_skill","args":{"skill_id":"root1:example-skill"},"mode":"safe","reason":"load relevant skill instructions"}
 {"tool":"list_vault_credentials","args":{},"mode":"safe","reason":"inspect available credential metadata without secrets"}
@@ -214,7 +214,7 @@ Operating rules:
 - Use tool_batch for multiple independent read-only inspections in one reviewed step; Safe Mode batches cannot write files or run shell commands.
 - Use update_plan to keep a visible project plan current when work has multiple steps; keep at most one item in_progress.
 - Use plugin_list before plugin_run; only run configured plugins that directly apply to the task.
-- Use apply_patch for focused code edits when a unified diff is clearer than write_file/replace_file.
+- Use apply_patch for focused code edits with a Codex-style patch block or unified diff when that is clearer than write_file/replace_file.
 - After durable progress, update the Summary.
 - Do not explain Handex basics back to the user unless asked; behave like a familiar terminal coding agent whose tool calls are manually ferried.
 
