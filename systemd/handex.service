@@ -7,7 +7,7 @@ Wants=network-online.target
 Type=simple
 WorkingDirectory=/opt/handex
 EnvironmentFile=/etc/handex/handex.env
-ExecStart=/opt/handex/.venv/bin/uvicorn handex.app:app --host ${HANDEX_HOST} --port ${HANDEX_PORT}
+ExecStart=/opt/handex/.venv/bin/python -m handex.server
 Restart=on-failure
 RestartSec=3
 

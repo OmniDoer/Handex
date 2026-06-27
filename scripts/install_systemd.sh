@@ -13,6 +13,10 @@ if [[ ! -f /etc/handex/handex.env ]]; then
     printf 'HANDEX_LOGS_DIR=/opt/handex/logs\n'
     printf 'HANDEX_SECRET_KEY=%s\n' "$(openssl rand -hex 32)"
     printf 'HANDEX_ADMIN_PASSWORD=%s\n' "$(openssl rand -base64 24 | tr -d '\n')"
+    if [[ -f /etc/letsencrypt/live/482692.xyz/fullchain.pem && -f /etc/letsencrypt/live/482692.xyz/privkey.pem ]]; then
+      printf 'HANDEX_SSL_CERTFILE=/etc/letsencrypt/live/482692.xyz/fullchain.pem\n'
+      printf 'HANDEX_SSL_KEYFILE=/etc/letsencrypt/live/482692.xyz/privkey.pem\n'
+    fi
     printf '\n'
   } > /etc/handex/handex.env
 fi

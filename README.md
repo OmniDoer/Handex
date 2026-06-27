@@ -145,7 +145,7 @@ python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 ```
 
-Run locally:
+Run locally without TLS:
 
 ```sh
 .venv/bin/uvicorn handex.app:app --host 0.0.0.0 --port 17395
@@ -161,11 +161,27 @@ The installer creates `/etc/handex/handex.env` with a generated
 `HANDEX_SECRET_KEY` and `HANDEX_ADMIN_PASSWORD`, installs
 `/etc/systemd/system/handex.service`, enables it, and starts it.
 
+If `/etc/letsencrypt/live/482692.xyz/fullchain.pem` and `privkey.pem` exist,
+the installer enables direct HTTPS on port `17395`, making the PWA installable
+at `https://482692.xyz:17395/` without changing nginx. If those variables are
+removed, the same service runs plain HTTP on port `17395`.
+
 Check:
 
 ```sh
 systemctl status handex.service --no-pager
+```
+
+For plain HTTP deployments:
+
+```sh
 curl http://127.0.0.1:17395/healthz
+```
+
+For the default `482692.xyz` TLS deployment:
+
+```sh
+curl --resolve 482692.xyz:17395:127.0.0.1 https://482692.xyz:17395/healthz
 ```
 
 The generated password is intentionally not committed. Read it directly from
