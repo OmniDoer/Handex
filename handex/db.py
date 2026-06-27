@@ -68,6 +68,17 @@ def init_db() -> None:
                 result_prompt TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS vault_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                label TEXT NOT NULL,
+                kind TEXT NOT NULL DEFAULT '',
+                username TEXT NOT NULL DEFAULT '',
+                secret_encrypted TEXT NOT NULL,
+                metadata_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
             """
         )
 
@@ -241,6 +252,66 @@ def list_logs(project_id: int, limit: int = 50) -> list[dict[str, Any]]:
             (project_id, limit),
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+def create_vault_item(data: dict[str, Any]) -> int:
+    timestamp = now_iso()
+    with connect() as conn:
+        cursor = conn.execute(
+            """
+            INSERT INTO vault_items (
+                label, kind, username, secret_encrypted, metadata_json, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                data["label"],
+                data.get("kind", ""),
+                data.get("username", ""),
+                data["secret_encrypted"],
+                json.dumps(data.get("metadata") or {}, ensure_ascii=False),
+                timestamp,
+                timestamp,
+            ),
+        )
+        return int(cursor.lastrowid)
+
+
+def list_vault_items() -> list[dict[str, Any]]:
+    with connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, label, kind, username, metadata_json, created_at, updated_at
+            FROM vault_items
+            ORDER BY updated_at DESC, id DESC
+            """
+        ).fetchall()
+    result = []
+    for row in rows:
+        item = dict(row)
+        try:
+            item["metadata"] = json.loads(item.get("metadata_json") or "{}")
+        except json.JSONDecodeError:
+            item["metadata"] = {}
+        result.append(item)
+    return result
+
+
+def get_vault_item(item_id: int) -> dict[str, Any] | None:
+    with connect() as conn:
+        row = conn.execute("SELECT * FROM vault_items WHERE id = ?", (item_id,)).fetchone()
+    if not row:
+        return None
+    item = dict(row)
+    try:
+        item["metadata"] = json.loads(item.get("metadata_json") or "{}")
+    except json.JSONDecodeError:
+        item["metadata"] = {}
+    return item
+
+
+def delete_vault_item(item_id: int) -> None:
+    with connect() as conn:
+        conn.execute("DELETE FROM vault_items WHERE id = ?", (item_id,))
 
 
 def ensure_workspace(path: str) -> Path:

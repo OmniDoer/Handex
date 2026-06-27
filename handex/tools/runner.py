@@ -8,6 +8,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
@@ -15,6 +16,7 @@ from typing import Any, Callable
 from ..capabilities import configured_capability_report, list_skills, list_vault_metadata, read_skill, skill_pack_prompt
 from ..config import settings
 from ..prompts import TOOL_SCHEMA
+from ..vault import decrypt_item_secret, metadata_for_tools
 
 
 SAFE_SHELL_BLOCKLIST = [
@@ -182,12 +184,16 @@ def preview_command(command: dict[str, Any]) -> str:
     if tool == "git":
         git_args = git_command_args(command)
         return "git " + " ".join(shlex.quote(item) for item in git_args)
+    if tool == "apply_patch":
+        return "git apply --check && git apply"
     if tool in {"read_file", "write_file", "append_file", "replace_file", "delete_file", "list_files", "search_files", "grep"}:
         return f"{tool} {args.get('path') or args.get('root') or '.'}"
     if tool == "read_skill":
         return f"read_skill {args.get('skill_id') or args.get('name') or ''}"
-    if tool in {"list_skills", "skill_pack", "list_vault_credentials", "capability_report"}:
+    if tool in {"list_skills", "skill_pack", "list_vault_credentials", "vault_list", "capability_report"}:
         return tool
+    if tool == "vault_run":
+        return str(args.get("command") or "")
     return tool
 
 
@@ -200,7 +206,13 @@ def subprocess_result(
     final_command: str,
     argv: list[str] | None = None,
     shell: bool = False,
+    extra_env: dict[str, str] | None = None,
+    redact_values: list[str] | None = None,
 ) -> ToolResult:
+    env = None
+    if extra_env:
+        env = os.environ.copy()
+        env.update(extra_env)
     try:
         completed = subprocess.run(
             final_command if shell else argv,
@@ -210,6 +222,7 @@ def subprocess_result(
             capture_output=True,
             timeout=timeout_for(command, mode),
             executable="/bin/bash" if shell else None,
+            env=env,
         )
         return ToolResult(
             tool=tool,
@@ -218,8 +231,8 @@ def subprocess_result(
             cwd=str(cwd),
             final_command=final_command,
             exit_code=int(completed.returncode),
-            stdout=clamp_output(completed.stdout or ""),
-            stderr=clamp_output(completed.stderr or ""),
+            stdout=clamp_output(redact_text(completed.stdout or "", redact_values or [])),
+            stderr=clamp_output(redact_text(completed.stderr or "", redact_values or [])),
         )
     except subprocess.TimeoutExpired as exc:
         stdout = exc.stdout if isinstance(exc.stdout, str) else (exc.stdout or b"").decode(errors="replace")
@@ -231,9 +244,17 @@ def subprocess_result(
             cwd=str(cwd),
             final_command=final_command,
             exit_code=124,
-            stdout=clamp_output(stdout),
-            stderr=clamp_output((stderr or "") + "\nHandex timeout expired."),
+            stdout=clamp_output(redact_text(stdout, redact_values or [])),
+            stderr=clamp_output(redact_text((stderr or "") + "\nHandex timeout expired.", redact_values or [])),
         )
+
+
+def redact_text(text: str, values: list[str]) -> str:
+    redacted = text
+    for value in values:
+        if value:
+            redacted = redacted.replace(value, "[REDACTED]")
+    return redacted
 
 
 def run_shell(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
@@ -276,6 +297,69 @@ def run_git(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
     argv = ["git", *args]
     final_command = "git " + " ".join(shlex.quote(item) for item in args)
     return subprocess_result(command=command, tool="git", mode=mode, cwd=cwd, final_command=final_command, argv=argv)
+
+
+def validate_patch_paths(patch: str, mode: str) -> None:
+    if mode != "safe":
+        return
+    paths: list[str] = []
+    for line in patch.splitlines():
+        if line.startswith(("--- ", "+++ ")):
+            raw = line[4:].split("\t", 1)[0].strip()
+            if raw == "/dev/null":
+                continue
+            if raw.startswith(("a/", "b/")):
+                raw = raw[2:]
+            paths.append(raw)
+        elif line.startswith("diff --git "):
+            parts = line.split()
+            paths.extend(part[2:] if part.startswith(("a/", "b/")) else part for part in parts[2:4])
+    for raw in paths:
+        path = Path(raw)
+        if path.is_absolute() or ".." in path.parts:
+            raise ToolError(f"Safe Mode blocks patch path outside workspace: {raw}")
+
+
+def run_apply_patch(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    cwd = resolve_cwd(command, workspace, mode)
+    args = command_args(command)
+    patch = str(args.get("patch") or args.get("diff") or "")
+    check_only = bool(args.get("check_only") or False)
+    if not patch.strip():
+        raise ToolError("apply_patch args.patch is required")
+    validate_patch_paths(patch, mode)
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False) as handle:
+        handle.write(patch)
+        patch_path = handle.name
+    try:
+        check = subprocess.run(["git", "apply", "--check", patch_path], cwd=str(cwd), text=True, capture_output=True, timeout=timeout_for(command, mode))
+        if check.returncode != 0 or check_only:
+            return ToolResult(
+                "apply_patch",
+                command,
+                mode,
+                str(cwd),
+                "git apply --check",
+                int(check.returncode),
+                clamp_output(check.stdout or ""),
+                clamp_output(check.stderr or ""),
+            )
+        apply = subprocess.run(["git", "apply", patch_path], cwd=str(cwd), text=True, capture_output=True, timeout=timeout_for(command, mode))
+        return ToolResult(
+            "apply_patch",
+            command,
+            mode,
+            str(cwd),
+            "git apply",
+            int(apply.returncode),
+            clamp_output((check.stdout or "") + (apply.stdout or "")),
+            clamp_output((check.stderr or "") + (apply.stderr or "")),
+        )
+    finally:
+        try:
+            Path(patch_path).unlink()
+        except OSError:
+            pass
 
 
 def run_read_file(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
@@ -453,6 +537,54 @@ def run_list_vault_credentials(command: dict[str, Any], workspace: Path, mode: s
     return ToolResult("list_vault_credentials", command, mode, str(workspace), "list_vault_credentials", 0, output + "\n", "")
 
 
+def run_vault_list(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    output = json.dumps(metadata_for_tools(), ensure_ascii=False, indent=2)
+    return ToolResult("vault_list", command, mode, str(workspace), "vault_list", 0, output + "\n", "")
+
+
+def parse_handex_vault_id(value: Any) -> int:
+    raw = str(value or "")
+    if raw.startswith("handex:"):
+        raw = raw.split(":", 1)[1]
+    try:
+        return int(raw)
+    except ValueError as exc:
+        raise ToolError("vault_run args.credential_id must look like handex:<id>") from exc
+
+
+def run_vault_run(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    args = command_args(command)
+    item_id = parse_handex_vault_id(args.get("credential_id") or args.get("id"))
+    env_name = str(args.get("env") or "HANDEX_SECRET")
+    username_env = str(args.get("username_env") or "")
+    command_text = str(args.get("command") or "")
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", env_name):
+        raise ToolError("vault_run args.env must be a valid environment variable name")
+    if username_env and not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", username_env):
+        raise ToolError("vault_run args.username_env must be a valid environment variable name")
+    if not command_text.strip():
+        raise ToolError("vault_run args.command is required")
+    if mode == "safe":
+        warnings = validate_safe_shell(command_text)
+        if warnings:
+            raise ToolError("; ".join(warnings))
+    item, secret = decrypt_item_secret(item_id)
+    extra_env = {env_name: secret}
+    if username_env:
+        extra_env[username_env] = str(item.get("username") or "")
+    cwd = resolve_cwd(command, workspace, mode)
+    return subprocess_result(
+        command=command,
+        tool="vault_run",
+        mode=mode,
+        cwd=cwd,
+        final_command=command_text,
+        shell=True,
+        extra_env=extra_env,
+        redact_values=[secret],
+    )
+
+
 def run_capability_report(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
     tool_name = str(command.get("tool") or "capability_report")
     return ToolResult(tool_name, command, mode, str(workspace), tool_name, 0, clamp_output(configured_capability_report()) + "\n", "")
@@ -462,6 +594,7 @@ registry = ToolRegistry()
 registry.register("shell", run_shell)
 registry.register("python", run_python)
 registry.register("git", run_git)
+registry.register("apply_patch", run_apply_patch)
 registry.register("read_file", run_read_file)
 registry.register("write_file", run_write_file)
 registry.register("append_file", run_append_file)
@@ -474,4 +607,6 @@ registry.register("list_skills", run_list_skills)
 registry.register("read_skill", run_read_skill)
 registry.register("skill_pack", run_skill_pack)
 registry.register("list_vault_credentials", run_list_vault_credentials)
+registry.register("vault_list", run_vault_list)
+registry.register("vault_run", run_vault_run)
 registry.register("capability_report", run_capability_report)

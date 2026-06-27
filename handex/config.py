@@ -22,6 +22,7 @@ class Settings:
     skill_roots: List[Path]
     vault_metadata_command: str
     help_commands: List[Tuple[str, str]]
+    vault_key: str
     max_output_chars: int = 20000
 
 
@@ -66,6 +67,7 @@ def load_settings() -> Settings:
         skill_roots=_path_list(os.environ.get("HANDEX_SKILL_ROOTS", ""), default_skill_roots),
         vault_metadata_command=os.environ.get("HANDEX_VAULT_METADATA_COMMAND", ""),
         help_commands=_help_commands(os.environ.get("HANDEX_HELP_COMMANDS", "")),
+        vault_key=os.environ.get("HANDEX_VAULT_KEY", ""),
     )
 
 

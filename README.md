@@ -83,10 +83,13 @@ Built-in tools:
 - `search_files`
 - `grep`
 - `git`
+- `apply_patch`
 - `list_skills`
 - `read_skill`
 - `skill_pack`
 - `list_vault_credentials`
+- `vault_list`
+- `vault_run`
 - `capability_report`
 
 Command schema:
@@ -105,21 +108,50 @@ The runner is plugin-ready through `ToolRegistry`. Future tools can register a
 callable that receives the parsed command, resolved workspace, and mode, then
 returns a `ToolResult`.
 
-## Agent Fallback Mode
+`apply_patch` accepts a unified diff and runs `git apply --check` before
+applying it. In Safe Mode, absolute paths and `..` paths are rejected.
+
+## Single-Step Agent Mode
 
 Handex can be used as a manual replacement when an automated coding agent is
-unavailable or quota-limited. The project page includes an Agent Fallback Prompt
-that tells any web LLM how to behave like a coding agent inside the Hand Loop:
+unavailable or quota-limited. For Codex or OmniDoer users, the intended mental
+model is the same agent loop with one extra copy/paste boundary:
+
+```text
+Codex/OmniDoer: model proposes tool -> tool runs -> model sees result
+Handex:        copy prompt -> model proposes tool -> paste reply -> approve tool -> copy result back
+```
+
+The project page includes a Codex-style Single-Step Prompt that tells any web
+LLM how to behave like a coding agent inside the Hand Loop:
 
 - inspect local context through Tool Commands
+- produce at most one next Tool Command per turn
 - request exact file reads and edits
+- apply focused unified diffs through `apply_patch`
 - use skills by asking Handex to list/read configured `SKILL.md` files
 - view vault credential metadata without exposing secrets
+- run reviewed commands with local vault secrets injected through environment variables
 - keep summaries durable between web LLM sessions
 
 This mode is not Codex-specific and does not vendor Codex, OmniDoer, or any
 private runtime. Handex is a peer framework: it reads compatible capability
 sources from configuration at runtime.
+
+### No-Learning-Cost Migration
+
+The migration target is muscle-memory compatibility:
+
+- use the Codex-style prompt as the first message in ChatGPT, Claude, Gemini,
+  DeepSeek, Kimi, Doubao, Tongyi, or another web LLM
+- paste the full web LLM reply back into Handex; do not manually extract JSON
+- review the same surface Codex would have reviewed internally: JSON, command,
+  cwd, mode, stdout, stderr, and result prompt
+- use familiar tools: `shell`, `python`, `git`, `apply_patch`, file tools,
+  skills, and vault-backed command execution
+- keep working one step at a time until the Summary is updated
+
+The only new habit is moving text between the web LLM and Handex.
 
 ## Skills
 
@@ -143,9 +175,26 @@ the server's current Codex/OmniDoer skills.
 
 ## Vault Metadata
 
-Handex does not decrypt or print credentials by default. Instead, it can call a
-configured metadata provider that returns a JSON list of credential records. The
-provider output is sanitized down to:
+Handex has two vault layers.
+
+The first layer is Handex's own encrypted local vault. It stores encrypted
+secrets in SQLite and keeps the Fernet key in `HANDEX_VAULT_KEY`, which should
+live in `/etc/handex/handex.env` or another deployment secret store, not in git.
+The project page can add and delete local vault items. Tool access is explicit:
+
+- `vault_list`: metadata only for local Handex vault items
+- `vault_run`: decrypt one selected item and inject it into an environment
+  variable for the approved command
+
+`vault_run` redacts direct appearances of the secret value from stdout and
+stderr before writing logs or Tool Result prompts. It cannot prevent a malicious
+command from transforming a secret before printing it, so the human must still
+review the full command before execution.
+
+The second layer is an optional external metadata provider. Handex does not
+decrypt or print external credentials by default. Instead, it can call a
+configured provider that returns a JSON list of credential records. The provider
+output is sanitized down to:
 
 - credential id
 - masked username
@@ -243,6 +292,7 @@ Important runtime configuration:
 
 ```sh
 HANDEX_SKILL_ROOTS=/opt/handex/skills
+HANDEX_VAULT_KEY=<generated-fernet-key>
 HANDEX_VAULT_METADATA_COMMAND=
 HANDEX_HELP_COMMANDS=
 ```

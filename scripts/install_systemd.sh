@@ -15,6 +15,11 @@ if [[ ! -f /etc/handex/handex.env ]]; then
     printf 'HANDEX_VAULT_METADATA_COMMAND=\n'
     printf 'HANDEX_HELP_COMMANDS=\n'
     printf 'HANDEX_SECRET_KEY=%s\n' "$(openssl rand -hex 32)"
+    printf 'HANDEX_VAULT_KEY=%s\n' "$(/opt/handex/.venv/bin/python - <<'PY'
+from cryptography.fernet import Fernet
+print(Fernet.generate_key().decode())
+PY
+)"
     printf 'HANDEX_ADMIN_PASSWORD=%s\n' "$(openssl rand -base64 24 | tr -d '\n')"
     if [[ -f /etc/letsencrypt/live/482692.xyz/fullchain.pem && -f /etc/letsencrypt/live/482692.xyz/privkey.pem ]]; then
       printf 'HANDEX_SSL_CERTFILE=/etc/letsencrypt/live/482692.xyz/fullchain.pem\n'

@@ -58,6 +58,38 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(result.exit_code, 0)
             self.assertIn("Use this skill for tests.", result.stdout)
 
+    def test_apply_patch_updates_workspace_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "note.txt"
+            path.write_text("old\n", encoding="utf-8")
+            patch = (
+                "diff --git a/note.txt b/note.txt\n"
+                "--- a/note.txt\n"
+                "+++ b/note.txt\n"
+                "@@ -1 +1 @@\n"
+                "-old\n"
+                "+new\n"
+            )
+
+            result = registry.run({"tool": "apply_patch", "args": {"patch": patch}, "cwd": "."}, tmp, "safe")
+
+            self.assertEqual(result.exit_code, 0)
+            self.assertEqual(path.read_text(encoding="utf-8"), "new\n")
+
+    def test_apply_patch_safe_mode_blocks_parent_paths(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            patch = (
+                "diff --git a/../note.txt b/../note.txt\n"
+                "--- a/../note.txt\n"
+                "+++ b/../note.txt\n"
+                "@@ -1 +1 @@\n"
+                "-old\n"
+                "+new\n"
+            )
+
+            with self.assertRaises(ToolError):
+                registry.run({"tool": "apply_patch", "args": {"patch": patch}, "cwd": "."}, tmp, "safe")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -34,7 +34,7 @@
 
 <section class="section-block" id="agent">
   <div class="section-title">
-    <h2>Agent Fallback Prompt</h2>
+    <h2>Codex-Style Prompt</h2>
     <button type="button" class="copy-target" data-target="agent-prompt">Copy</button>
   </div>
   <textarea id="agent-prompt" class="mono tall" readonly>{{ agent_prompt }}</textarea>
@@ -62,7 +62,63 @@
   {% endif %}
 
   <div class="section-title inner">
-    <h2>Vault Metadata</h2>
+    <h2>Handex Vault</h2>
+    <span>{{ handex_vault_items|length }} local</span>
+  </div>
+  {% if not handex_vault_enabled %}
+    <div class="alert">HANDEX_VAULT_KEY is not configured. Local encrypted vault writes are disabled.</div>
+  {% endif %}
+  {% if handex_vault_items %}
+    {% for item in handex_vault_items %}
+      <article class="history-item">
+        <div class="command-meta">
+          <strong>{{ item.label }}</strong>
+          <span>handex:{{ item.id }}</span>
+        </div>
+        <dl class="preview-grid">
+          <div><dt>User</dt><dd>{{ item.username or "-" }}</dd></div>
+          <div><dt>Kind</dt><dd>{{ item.kind or "-" }}</dd></div>
+          <div><dt>Host</dt><dd>{{ item.metadata.host or "-" }}</dd></div>
+          <div><dt>Updated</dt><dd>{{ item.updated_at }}</dd></div>
+        </dl>
+        <form method="post" action="/projects/{{ project.id }}/vault/{{ item.id }}/delete">
+          <button class="danger" type="submit">Delete</button>
+        </form>
+      </article>
+    {% endfor %}
+  {% else %}
+    <p class="empty">No local Handex vault items yet.</p>
+  {% endif %}
+  <form class="stack" method="post" action="/projects/{{ project.id }}/vault">
+    <label>
+      Label
+      <input name="label" placeholder="github-release-token">
+    </label>
+    <label>
+      Kind
+      <input name="kind" placeholder="token, password, ssh-key">
+    </label>
+    <label>
+      Username
+      <input name="username" autocomplete="off">
+    </label>
+    <label>
+      Host
+      <input name="host" placeholder="github.com">
+    </label>
+    <label>
+      Allowed Origins
+      <textarea name="allowed_origins" rows="2" placeholder="https://github.com"></textarea>
+    </label>
+    <label>
+      Secret
+      <textarea name="secret" rows="4" autocomplete="off"></textarea>
+    </label>
+    <button type="submit">Add Vault Item</button>
+  </form>
+
+  <div class="section-title inner">
+    <h2>External Vault Metadata</h2>
     <span>{{ vault_credentials|length }} records</span>
   </div>
   {% if vault_error %}

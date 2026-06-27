@@ -40,6 +40,7 @@ from .prompts import (
     build_tool_result_prompt,
 )
 from .tools.runner import ToolError, ToolResult, preview_command, registry
+from .vault import VaultError, create_item as vault_create_item, delete_item as vault_delete_item, list_items as vault_list_items, vault_enabled
 
 
 STATIC_DIR = settings.base_dir / "static"
@@ -94,6 +95,8 @@ def project_page_context(project: dict[str, Any], **extra: Any) -> dict[str, Any
         "skills": list_skills(),
         "vault_credentials": vault_credentials,
         "vault_error": vault_error,
+        "handex_vault_enabled": vault_enabled(),
+        "handex_vault_items": vault_list_items(),
         "default_prompt_template": DEFAULT_PROMPT_TEMPLATE,
         "default_tool_protocol": DEFAULT_TOOL_PROTOCOL,
         "tool_names": registry.names(),
@@ -232,6 +235,38 @@ def delete_project_route(project_id: int, _: None = Depends(require_auth)) -> Re
     project_or_404(project_id)
     delete_project(project_id)
     return redirect("/")
+
+
+@app.post("/projects/{project_id}/vault")
+def create_vault_item_route(
+    project_id: int,
+    label: Annotated[str, Form()],
+    kind: Annotated[str, Form()] = "",
+    username: Annotated[str, Form()] = "",
+    host: Annotated[str, Form()] = "",
+    allowed_origins: Annotated[str, Form()] = "",
+    secret: Annotated[str, Form()] = "",
+    _: None = Depends(require_auth),
+) -> RedirectResponse:
+    project_or_404(project_id)
+    metadata = {
+        "host": host.strip(),
+        "allowed_origins": [item.strip() for item in allowed_origins.splitlines() if item.strip()],
+    }
+    try:
+        item_id = vault_create_item(label, kind, username, secret, metadata)
+        add_log(project_id, "vault.create", stdout=f"Created Handex vault item handex:{item_id} ({label})")
+    except VaultError as exc:
+        add_log(project_id, "vault.create.error", stderr=str(exc))
+    return redirect(f"/projects/{project_id}#capabilities")
+
+
+@app.post("/projects/{project_id}/vault/{item_id}/delete")
+def delete_vault_item_route(project_id: int, item_id: int, _: None = Depends(require_auth)) -> RedirectResponse:
+    project_or_404(project_id)
+    vault_delete_item(item_id)
+    add_log(project_id, "vault.delete", stdout=f"Deleted Handex vault item handex:{item_id}")
+    return redirect(f"/projects/{project_id}#capabilities")
 
 
 @app.get("/projects/{project_id}/prompt/start", response_class=PlainTextResponse)
