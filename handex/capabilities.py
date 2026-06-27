@@ -38,6 +38,8 @@ BUILTIN_TOOL_CATALOG: list[dict[str, str]] = [
     {"id": "list_vault_credentials", "description": "List external vault credential metadata without secrets."},
     {"id": "vault_list", "description": "List local Handex vault item metadata without secrets."},
     {"id": "vault_run", "description": "Run a reviewed command with one local Handex vault secret injected into an environment variable."},
+    {"id": "omnidoer_git", "description": "Run Git through OmniDoer's vault-backed HTTPS credential bridge."},
+    {"id": "omnidoer_github_api", "description": "Call the GitHub API through OmniDoer's vault-backed credential bridge."},
     {"id": "capability_report", "description": "Show configured skill roots, plugin roots, vault metadata provider, and help command output."},
     {"id": "capability_search", "description": "Search tools, skills, plugins, vault metadata, and help command labels by keyword."},
     {"id": "context_pack", "description": "Build a Codex-style workspace context snapshot."},
@@ -412,6 +414,17 @@ def configured_capability_report() -> str:
     sections.append("")
     sections.append("## Vault Metadata Provider")
     sections.append("- configured" if settings.vault_metadata_command else "- not configured")
+    sections.append("")
+    sections.append("## OmniDoer Vault Bridge")
+    omnidoer_vault_path = getattr(settings, "omnidoer_vault_path", "")
+    omnidoer_vault_passphrase_file = getattr(settings, "omnidoer_vault_passphrase_file", "")
+    if omnidoer_vault_path and omnidoer_vault_passphrase_file:
+        sections.append(f"- vault: {omnidoer_vault_path}")
+        sections.append("- passphrase file: configured")
+        sections.append(f"- git origin: {getattr(settings, 'omnidoer_git_origin', 'https://github.com')}")
+        sections.append(f"- github api origin: {getattr(settings, 'omnidoer_github_api_origin', 'https://api.github.com')}")
+    else:
+        sections.append("- not configured")
     sections.append("")
     sections.append("## Extra Help Commands")
     if not settings.help_commands:

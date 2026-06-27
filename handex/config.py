@@ -23,6 +23,11 @@ class Settings:
     plugin_roots: List[Path]
     vault_metadata_command: str
     help_commands: List[Tuple[str, str]]
+    omnidoer_bin: str
+    omnidoer_vault_path: str
+    omnidoer_vault_passphrase_file: str
+    omnidoer_git_origin: str
+    omnidoer_github_api_origin: str
     vault_key: str
     max_output_chars: int = 20000
     max_upload_bytes: int = 25 * 1024 * 1024
@@ -71,6 +76,11 @@ def load_settings() -> Settings:
         plugin_roots=_path_list(os.environ.get("HANDEX_PLUGIN_ROOTS", ""), default_plugin_roots),
         vault_metadata_command=os.environ.get("HANDEX_VAULT_METADATA_COMMAND", ""),
         help_commands=_help_commands(os.environ.get("HANDEX_HELP_COMMANDS", "")),
+        omnidoer_bin=os.environ.get("HANDEX_OMNIDOER_BIN", "omnidoer"),
+        omnidoer_vault_path=os.environ.get("HANDEX_OMNIDOER_VAULT_PATH", ""),
+        omnidoer_vault_passphrase_file=os.environ.get("HANDEX_OMNIDOER_VAULT_PASSPHRASE_FILE", ""),
+        omnidoer_git_origin=os.environ.get("HANDEX_OMNIDOER_GIT_ORIGIN", "https://github.com"),
+        omnidoer_github_api_origin=os.environ.get("HANDEX_OMNIDOER_GITHUB_API_ORIGIN", "https://api.github.com"),
         vault_key=os.environ.get("HANDEX_VAULT_KEY", ""),
         max_upload_bytes=int(os.environ.get("HANDEX_MAX_UPLOAD_BYTES", str(25 * 1024 * 1024))),
     )

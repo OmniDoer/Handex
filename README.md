@@ -88,6 +88,8 @@ Built-in tools:
 - `search_files`
 - `grep`
 - `git`
+- `omnidoer_git`
+- `omnidoer_github_api`
 - `git_bootstrap`
 - `apply_patch`
 - `list_skills`
@@ -196,6 +198,14 @@ shell interpolation. Repository URLs with embedded credentials are rejected;
 private clone flows should use reviewed Vault-backed commands instead of
 pasting tokens into URLs.
 
+`omnidoer_git` and `omnidoer_github_api` call OmniDoer's vault-backed Git and
+GitHub API bridges through argv, not shell interpolation. They use the
+server-configured vault path and passphrase file, pass only credential metadata
+such as `credential_id`, and run with a minimal environment that does not
+inherit Handex secret variables. Safe Mode permits only `git ls-remote` and
+GitHub `GET`; mutating Git or GitHub operations require YOLO Mode after human
+review.
+
 `plugin_list` and `plugin_run` expose configured command plugins from
 `HANDEX_PLUGIN_ROOTS`. A plugin is a directory containing `plugin.json`; it
 declares a command argv, description, timeout, and whether it is allowed in
@@ -236,6 +246,8 @@ LLM how to behave like a coding agent inside the Hand Loop:
 - use skills by asking Handex to list/read configured `SKILL.md` files
 - view vault credential metadata without exposing secrets
 - run reviewed commands with local vault secrets injected through environment variables
+- run reviewed Git/GitHub operations with existing OmniDoer vault credentials
+  through `omnidoer_git` and `omnidoer_github_api`
 - keep summaries durable between web LLM sessions
 
 This mode is not Codex-specific and does not vendor Codex, OmniDoer, or any
@@ -389,6 +401,28 @@ HANDEX_VAULT_METADATA_COMMAND='your-vault-cli list-metadata --json'
 The `list_vault_credentials` tool returns only this metadata. Credentialed
 operations should still happen through local commands reviewed by the human,
 for example a Vault-backed git wrapper.
+
+When OmniDoer is installed locally, Handex can also call its vault-backed Git
+and GitHub API bridges directly:
+
+```sh
+HANDEX_OMNIDOER_BIN=omnidoer
+HANDEX_OMNIDOER_VAULT_PATH=/root/.omnidoer/vault.json
+HANDEX_OMNIDOER_VAULT_PASSPHRASE_FILE=/root/.omnidoer/vault-passphrase
+HANDEX_OMNIDOER_GIT_ORIGIN=https://github.com
+HANDEX_OMNIDOER_GITHUB_API_ORIGIN=https://api.github.com
+```
+
+The related tools are:
+
+- `omnidoer_git`: run `omnidoer git run` with the configured vault bridge
+- `omnidoer_github_api`: run `omnidoer github api` with the configured vault
+  bridge
+
+Safe Mode only permits read-only `git ls-remote` and GitHub `GET` requests.
+Use YOLO Mode after review for `push`, release creation, issue edits, workflow
+dispatches, or other mutating operations. Command output is still treated as
+heuristically redacted; do not ask tools to print raw tokens or passwords.
 
 ## Capability Report
 
@@ -619,6 +653,11 @@ HANDEX_VAULT_KEY=<generated-fernet-key>
 HANDEX_MAX_UPLOAD_BYTES=26214400
 HANDEX_VAULT_METADATA_COMMAND=
 HANDEX_HELP_COMMANDS=
+HANDEX_OMNIDOER_BIN=omnidoer
+HANDEX_OMNIDOER_VAULT_PATH=
+HANDEX_OMNIDOER_VAULT_PASSPHRASE_FILE=
+HANDEX_OMNIDOER_GIT_ORIGIN=https://github.com
+HANDEX_OMNIDOER_GITHUB_API_ORIGIN=https://api.github.com
 ```
 
 These can be changed in `/etc/handex/handex.env`; restart `handex.service`

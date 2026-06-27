@@ -55,6 +55,12 @@ relevant `SKILL.md`, the LLM can request only the specific relative files named
 by that skill, keeping Codex-style progressive disclosure without loading an
 entire skill directory.
 
+OmniDoer vault-backed Git and GitHub operations are exposed through
+`omnidoer_git` and `omnidoer_github_api`. These tools use server-side vault
+configuration and credential ids from metadata, not pasted tokens. Safe Mode is
+limited to read-only `git ls-remote` and GitHub `GET`; mutating operations
+require YOLO Mode after review.
+
 Workspace uploads are exposed through the project page and the `list_uploads`
 tool. Uploaded files live under `.handex_uploads/` inside the workspace, and
 the Single-Step Agent Prompt includes a compact inventory so the LLM can ask

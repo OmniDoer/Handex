@@ -1,4 +1,6 @@
 import json
+import os
+import sys
 import tempfile
 import textwrap
 import types
@@ -13,9 +15,42 @@ from handex.tools.runner import ToolError, registry
 class RunnerTests(unittest.TestCase):
     def setUp(self):
         self.original_capability_settings = capabilities.settings
+        self.original_runner_settings = runner.settings
 
     def tearDown(self):
         capabilities.settings = self.original_capability_settings
+        runner.settings = self.original_runner_settings
+
+    def fake_omnidoer_settings(self, script: Path) -> types.SimpleNamespace:
+        return types.SimpleNamespace(
+            max_output_chars=20000,
+            omnidoer_bin=str(script),
+            omnidoer_vault_path="/tmp/handex-test-vault.json",
+            omnidoer_vault_passphrase_file="/tmp/handex-test-passphrase",
+            omnidoer_git_origin="https://github.com",
+            omnidoer_github_api_origin="https://api.github.com",
+        )
+
+    def write_fake_omnidoer(self, root: Path) -> Path:
+        script = root / "fake_omnidoer.py"
+        script.write_text(
+            textwrap.dedent(
+                """\
+                #!/usr/bin/env python3
+                import json
+                import os
+                import sys
+
+                print(json.dumps({
+                    "argv": sys.argv[1:],
+                    "has_handex_vault_key": "HANDEX_VAULT_KEY" in os.environ,
+                }))
+                """
+            ),
+            encoding="utf-8",
+        )
+        script.chmod(0o755)
+        return script
 
     def test_safe_write_and_read_stay_in_workspace(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -87,6 +122,62 @@ class RunnerTests(unittest.TestCase):
         payload = json.loads(result.stdout)
         self.assertEqual(result.exit_code, 0)
         self.assertIn(("tool", "apply_patch"), {(item["type"], item["id"]) for item in payload["results"]})
+
+    def test_omnidoer_git_uses_configured_vault_bridge_without_secret_env(self):
+        old_value = os.environ.get("HANDEX_VAULT_KEY")
+        os.environ["HANDEX_VAULT_KEY"] = "must-not-reach-child"
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                script = self.write_fake_omnidoer(Path(tmp))
+                runner.settings = self.fake_omnidoer_settings(script)
+
+                result = registry.run(
+                    {
+                        "tool": "omnidoer_git",
+                        "args": {
+                            "args": ["ls-remote", "https://github.com/example/private.git"],
+                            "credential_id": "cred_1",
+                        },
+                    },
+                    tmp,
+                    "safe",
+                )
+
+            payload = json.loads(result.stdout)
+            self.assertFalse(payload["has_handex_vault_key"])
+            self.assertEqual(payload["argv"][:4], ["git", "run", "--origin", "https://github.com"])
+            self.assertIn("--vault", payload["argv"])
+            self.assertIn("--passphrase-file", payload["argv"])
+            self.assertIn("--credential-id", payload["argv"])
+            self.assertEqual(payload["argv"][-2:], ["ls-remote", "https://github.com/example/private.git"])
+        finally:
+            if old_value is None:
+                os.environ.pop("HANDEX_VAULT_KEY", None)
+            else:
+                os.environ["HANDEX_VAULT_KEY"] = old_value
+
+    def test_omnidoer_git_safe_mode_blocks_mutating_subcommands(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ToolError):
+                registry.run({"tool": "omnidoer_git", "args": {"args": ["push", "origin", "main"]}}, tmp, "safe")
+
+    def test_omnidoer_github_api_builds_get_and_blocks_safe_mutations(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            script = self.write_fake_omnidoer(Path(tmp))
+            runner.settings = self.fake_omnidoer_settings(script)
+
+            result = registry.run(
+                {"tool": "omnidoer_github_api", "args": {"method": "GET", "path": "/user", "credential_id": "cred_1"}},
+                tmp,
+                "safe",
+            )
+            with self.assertRaises(ToolError):
+                registry.run({"tool": "omnidoer_github_api", "args": {"method": "POST", "path": "/user/repos", "body": {"name": "demo"}}}, tmp, "safe")
+
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["argv"][:4], ["github", "api", "--origin", "https://github.com"])
+        self.assertIn("--api-origin", payload["argv"])
+        self.assertEqual(payload["argv"][-2:], ["GET", "/user"])
 
     def test_apply_patch_updates_workspace_file(self):
         with tempfile.TemporaryDirectory() as tmp:

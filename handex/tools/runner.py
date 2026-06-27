@@ -72,6 +72,8 @@ SAFE_BATCH_TOOLS = {
     "plugin_list",
 }
 SAFE_BATCH_GIT_COMMANDS = {"status", "log", "show", "diff", "rev-parse", "ls-files", "grep", "describe", "blame"}
+SAFE_OMNIDOER_GIT_COMMANDS = {"ls-remote"}
+SAFE_GITHUB_API_METHODS = {"GET"}
 MAX_BATCH_COMMANDS = 12
 
 
@@ -305,6 +307,12 @@ def preview_command(command: dict[str, Any]) -> str:
     if tool == "git":
         git_args = git_command_args(command)
         return "git " + " ".join(shlex.quote(item) for item in git_args)
+    if tool == "omnidoer_git":
+        git_args = git_command_args(command)
+        return "omnidoer git run " + " ".join(shlex.quote(item) for item in git_args)
+    if tool == "omnidoer_github_api":
+        method = str(args.get("method") or "GET").upper()
+        return f"omnidoer github api {method} {args.get('path') or ''}"
     if tool == "git_bootstrap":
         return f"git clone {redacted_repo_url(str(args.get('repo_url') or args.get('url') or ''))}"
     if tool == "apply_patch":
@@ -361,7 +369,7 @@ def subprocess_result(
     inherit_env: bool = True,
 ) -> ToolResult:
     env = None
-    if extra_env:
+    if extra_env is not None:
         if inherit_env:
             env = os.environ.copy()
         else:
@@ -473,6 +481,80 @@ def run_git(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
     argv = ["git", *args]
     final_command = "git " + " ".join(shlex.quote(item) for item in args)
     return subprocess_result(command=command, tool="git", mode=mode, cwd=cwd, final_command=final_command, argv=argv)
+
+
+def omnidoer_vault_args() -> list[str]:
+    vault_path = str(getattr(settings, "omnidoer_vault_path", "") or "")
+    passphrase_file = str(getattr(settings, "omnidoer_vault_passphrase_file", "") or "")
+    if not vault_path or not passphrase_file:
+        raise ToolError("OmniDoer vault bridge is not configured. Set HANDEX_OMNIDOER_VAULT_PATH and HANDEX_OMNIDOER_VAULT_PASSPHRASE_FILE.")
+    return ["--vault", vault_path, "--passphrase-file", passphrase_file]
+
+
+def optional_credential_args(args: dict[str, Any]) -> list[str]:
+    credential_id = str(args.get("credential_id") or args.get("id") or "")
+    return ["--credential-id", credential_id] if credential_id else []
+
+
+def run_omnidoer_git(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    cwd = resolve_cwd(command, workspace, mode)
+    args = command_args(command)
+    git_args = git_command_args(command)
+    if not git_args:
+        raise ToolError("omnidoer_git args.args must include a git subcommand")
+    if mode == "safe" and git_args[0] not in SAFE_OMNIDOER_GIT_COMMANDS:
+        raise ToolError("Safe Mode omnidoer_git only permits read-only git ls-remote. Use YOLO Mode after review for credentialed writes or fetches.")
+    origin = str(args.get("origin") or getattr(settings, "omnidoer_git_origin", "") or "https://github.com")
+    argv = [
+        str(getattr(settings, "omnidoer_bin", "") or "omnidoer"),
+        "git",
+        "run",
+        "--origin",
+        origin,
+        *omnidoer_vault_args(),
+        *optional_credential_args(args),
+        *git_args,
+    ]
+    final_command = " ".join(shlex.quote(item) for item in argv)
+    return subprocess_result(command=command, tool="omnidoer_git", mode=mode, cwd=cwd, final_command=final_command, argv=argv, extra_env={}, inherit_env=False)
+
+
+def github_body_json(args: dict[str, Any]) -> str | None:
+    if "body_json" in args and args.get("body_json") not in (None, ""):
+        return str(args.get("body_json"))
+    if "body" in args and args.get("body") is not None:
+        return json.dumps(args.get("body"), ensure_ascii=False)
+    return None
+
+
+def run_omnidoer_github_api(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    cwd = resolve_cwd(command, workspace, mode)
+    args = command_args(command)
+    method = str(args.get("method") or "GET").upper()
+    path = str(args.get("path") or "")
+    if not path:
+        raise ToolError("omnidoer_github_api args.path is required")
+    if mode == "safe" and method not in SAFE_GITHUB_API_METHODS:
+        raise ToolError("Safe Mode omnidoer_github_api only permits GET. Use YOLO Mode after review for mutating GitHub API calls.")
+    origin = str(args.get("origin") or getattr(settings, "omnidoer_git_origin", "") or "https://github.com")
+    api_origin = str(args.get("api_origin") or getattr(settings, "omnidoer_github_api_origin", "") or "https://api.github.com")
+    argv = [
+        str(getattr(settings, "omnidoer_bin", "") or "omnidoer"),
+        "github",
+        "api",
+        "--origin",
+        origin,
+        "--api-origin",
+        api_origin,
+        *omnidoer_vault_args(),
+        *optional_credential_args(args),
+    ]
+    body = github_body_json(args)
+    if body is not None:
+        argv.extend(["--body-json", body])
+    argv.extend([method, path])
+    final_command = " ".join(shlex.quote(item) for item in argv)
+    return subprocess_result(command=command, tool="omnidoer_github_api", mode=mode, cwd=cwd, final_command=final_command, argv=argv, extra_env={}, inherit_env=False)
 
 
 def run_git_bootstrap(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
@@ -1365,6 +1447,8 @@ registry.register("shell", run_shell)
 registry.register("background_shell", run_background_shell)
 registry.register("python", run_python)
 registry.register("git", run_git)
+registry.register("omnidoer_git", run_omnidoer_git)
+registry.register("omnidoer_github_api", run_omnidoer_github_api)
 registry.register("git_bootstrap", run_git_bootstrap)
 registry.register("apply_patch", run_apply_patch)
 registry.register("read_file", run_read_file)
