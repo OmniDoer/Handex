@@ -78,6 +78,24 @@ class RunnerTests(unittest.TestCase):
                         "thread_id": argv[argv.index("--thread-id") + 1] if "--thread-id" in argv else None,
                         "has_codex_bin": "--codex-bin" in argv,
                     }))
+                elif argv[:2] == ["control", "revoke-device"]:
+                    print(json.dumps({"status": "revoked", "device_id": argv[2]}))
+                elif argv[:2] == ["control", "revoke-session"]:
+                    print(json.dumps({"status": "revoked", "session_id": argv[2]}))
+                elif argv[:2] == ["control", "enable-sync"]:
+                    print(json.dumps({
+                        "status": "enabled",
+                        "thread_id": argv[argv.index("--thread-id") + 1] if "--thread-id" in argv else None,
+                        "wait": "--wait" in argv,
+                        "yes": "--yes" in argv,
+                        "timeout": argv[argv.index("--timeout") + 1] if "--timeout" in argv else None,
+                    }))
+                elif argv[:2] == ["control", "challenge"]:
+                    print(json.dumps({"status": "challenged", "request_id": argv[2]}))
+                elif argv[:2] == ["control", "takeover"]:
+                    print(json.dumps({"status": "taken_over", "request_id": argv[2]}))
+                elif argv[:2] == ["control", "release"]:
+                    print(json.dumps({"status": "released", "request_id": argv[2]}))
                 elif argv[:2] == ["audit", "tail"]:
                     print("audit event ok")
                 elif argv[:2] == ["audit", "verify"]:
@@ -553,6 +571,51 @@ class RunnerTests(unittest.TestCase):
                 registry.run({"tool": "omnidoer_control_sync_status", "args": {"codex_bin": "/tmp/codex"}}, tmp, "safe")
             yolo = registry.run({"tool": "omnidoer_control_sync_status", "args": {"codex_bin": "/tmp/codex"}}, tmp, "yolo")
             self.assertTrue(json.loads(yolo.stdout)["has_codex_bin"])
+
+    def test_omnidoer_control_management_tools_are_yolo_only(self):
+        commands = [
+            {"tool": "omnidoer_control_revoke_device", "args": {"device_id": "dev_1"}},
+            {"tool": "omnidoer_control_revoke_session", "args": {"session_id": "sess_1"}},
+            {"tool": "omnidoer_control_enable_sync", "args": {"thread_id": "thread_1", "yes": True, "wait": True, "timeout": "1s"}},
+            {"tool": "omnidoer_request_challenge", "args": {"request_id": "req_test"}},
+            {"tool": "omnidoer_request_takeover", "args": {"request_id": "req_test"}},
+            {"tool": "omnidoer_request_release", "args": {"request_id": "req_test"}},
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            script = self.write_fake_omnidoer(Path(tmp))
+            runner.settings = self.fake_omnidoer_settings(script)
+
+            for command in commands:
+                with self.assertRaises(ToolError):
+                    registry.run(command, tmp, "safe")
+
+            revoked_device = registry.run(commands[0], tmp, "yolo")
+            revoked_session = registry.run(commands[1], tmp, "yolo")
+            enabled = registry.run(commands[2], tmp, "yolo")
+            challenged = registry.run(commands[3], tmp, "yolo")
+            takeover = registry.run(commands[4], tmp, "yolo")
+            released = registry.run(commands[5], tmp, "yolo")
+
+        self.assertEqual(json.loads(revoked_device.stdout)["device_id"], "dev_1")
+        self.assertEqual(json.loads(revoked_session.stdout)["session_id"], "sess_1")
+        enabled_payload = json.loads(enabled.stdout)
+        self.assertEqual(enabled_payload["thread_id"], "thread_1")
+        self.assertTrue(enabled_payload["yes"])
+        self.assertTrue(enabled_payload["wait"])
+        self.assertEqual(enabled_payload["timeout"], "1s")
+        self.assertEqual(json.loads(challenged.stdout)["status"], "challenged")
+        self.assertEqual(json.loads(takeover.stdout)["status"], "taken_over")
+        self.assertEqual(json.loads(released.stdout)["status"], "released")
+
+    def test_omnidoer_control_management_validates_ids(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            script = self.write_fake_omnidoer(Path(tmp))
+            runner.settings = self.fake_omnidoer_settings(script)
+
+            with self.assertRaises(ToolError):
+                registry.run({"tool": "omnidoer_control_revoke_device", "args": {"device_id": "../bad"}}, tmp, "yolo")
+            with self.assertRaises(ToolError):
+                registry.run({"tool": "omnidoer_request_takeover", "args": {"request_id": "bad"}}, tmp, "yolo")
 
     def test_omnidoer_git_safe_mode_blocks_mutating_subcommands(self):
         with tempfile.TemporaryDirectory() as tmp:

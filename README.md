@@ -126,6 +126,12 @@ Built-in tools:
 - `omnidoer_control_tunnel_info`
 - `omnidoer_control_security_status`
 - `omnidoer_control_sync_status`
+- `omnidoer_control_revoke_device`
+- `omnidoer_control_revoke_session`
+- `omnidoer_control_enable_sync`
+- `omnidoer_request_challenge`
+- `omnidoer_request_takeover`
+- `omnidoer_request_release`
 - `omnidoer_audit_tail`
 - `omnidoer_audit_verify`
 - `omnidoer_policy_test`
@@ -274,6 +280,12 @@ policy, and notification diagnostics through argv calls. `omnidoer_browser_open`
 opens a reviewed URL through OmniDoer's browser bridge; Safe Mode requires
 HTTPS.
 
+Mutating Control Client management commands are exposed separately and are
+YOLO-only: `omnidoer_control_revoke_device`,
+`omnidoer_control_revoke_session`, `omnidoer_control_enable_sync`,
+`omnidoer_request_challenge`, `omnidoer_request_takeover`, and
+`omnidoer_request_release`. Safe Mode rejects them before invoking OmniDoer.
+
 `plugin_list` and `plugin_run` expose configured command plugins from
 `HANDEX_PLUGIN_ROOTS`. A plugin is a directory containing `plugin.json`; it
 declares a command argv, description, timeout, and whether it is allowed in
@@ -324,6 +336,8 @@ LLM how to behave like a coding agent inside the Hand Loop:
   including streaming response records
 - inspect OmniDoer doctor/status/devices/sessions/tunnel/security/sync,
   audit, policy, and Telegram notification status without dropping to shell
+- perform reviewed YOLO-only Control Client management actions such as
+  revoking devices/sessions, enabling sync, or changing request ownership
 - open reviewed HTTPS URLs through OmniDoer's browser bridge
 - run reviewed Git/GitHub operations with existing OmniDoer vault credentials
   through `omnidoer_git` and `omnidoer_github_api`
@@ -531,6 +545,13 @@ The related tools are:
 - `omnidoer_control_security_status`: show security status
 - `omnidoer_control_sync_status`: inspect Codex thread/session sync status;
   Safe Mode uses the default Codex binary
+- `omnidoer_control_revoke_device`: revoke a paired device; YOLO Mode only
+- `omnidoer_control_revoke_session`: revoke a session; YOLO Mode only
+- `omnidoer_control_enable_sync`: enable sync for a reviewed session; YOLO Mode
+  only
+- `omnidoer_request_challenge`: challenge a request; YOLO Mode only
+- `omnidoer_request_takeover`: take over a request; YOLO Mode only
+- `omnidoer_request_release`: release a request; YOLO Mode only
 - `omnidoer_audit_tail`: read recent audit entries
 - `omnidoer_audit_verify`: verify audit log integrity
 - `omnidoer_policy_test`: run OmniDoer policy self-tests

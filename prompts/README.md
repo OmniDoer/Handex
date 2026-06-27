@@ -96,6 +96,13 @@ OmniDoer diagnostics and status commands are exposed through `omnidoer_doctor`,
 `omnidoer_telegram_status`. `omnidoer_browser_open` opens a reviewed URL through
 OmniDoer's browser bridge; Safe Mode requires HTTPS.
 
+Mutating Control Client management commands are YOLO-only:
+`omnidoer_control_revoke_device`, `omnidoer_control_revoke_session`,
+`omnidoer_control_enable_sync`, `omnidoer_request_challenge`,
+`omnidoer_request_takeover`, and `omnidoer_request_release`. Safe Mode rejects
+them before invoking OmniDoer because they change device/session access, sync
+state, or request ownership.
+
 Workspace uploads are exposed through the project page and the `list_uploads`
 tool. Uploaded files live under `.handex_uploads/` inside the workspace, and
 the Single-Step Agent Prompt includes a compact inventory so the LLM can ask

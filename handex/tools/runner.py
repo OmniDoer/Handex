@@ -392,6 +392,18 @@ def preview_command(command: dict[str, Any]) -> str:
         return "omnidoer control security-status"
     if tool == "omnidoer_control_sync_status":
         return f"omnidoer control sync-status {args.get('thread_id') or ''}"
+    if tool == "omnidoer_control_revoke_device":
+        return f"omnidoer control revoke-device {args.get('device_id') or args.get('id') or ''}"
+    if tool == "omnidoer_control_revoke_session":
+        return f"omnidoer control revoke-session {args.get('session_id') or args.get('id') or ''}"
+    if tool == "omnidoer_control_enable_sync":
+        return f"omnidoer control enable-sync {args.get('thread_id') or ''}"
+    if tool == "omnidoer_request_challenge":
+        return f"omnidoer control challenge {args.get('request_id') or args.get('id') or ''}"
+    if tool == "omnidoer_request_takeover":
+        return f"omnidoer control takeover {args.get('request_id') or args.get('id') or ''}"
+    if tool == "omnidoer_request_release":
+        return f"omnidoer control release {args.get('request_id') or args.get('id') or ''}"
     if tool == "omnidoer_audit_tail":
         return "omnidoer audit tail"
     if tool == "omnidoer_audit_verify":
@@ -733,6 +745,11 @@ def plain_token_arg(args: dict[str, Any], key: str, tool: str, *, required: bool
     if value and not re.fullmatch(r"[A-Za-z0-9_.:-]+", value):
         raise ToolError(f"{tool} args.{key} must contain only letters, numbers, dot, underscore, colon, or dash")
     return value
+
+
+def require_yolo(mode: str, tool: str, reason: str) -> None:
+    if mode == "safe":
+        raise ToolError(f"Safe Mode blocks {tool}: {reason}. Use YOLO Mode after review.")
 
 
 def public_payload(value: Any) -> Any:
@@ -1203,6 +1220,61 @@ def run_omnidoer_control_sync_status(command: dict[str, Any], workspace: Path, m
             raise ToolError("Safe Mode omnidoer_control_sync_status uses the default Codex binary. Use YOLO Mode after review to override codex_bin.")
         argv.extend(["--codex-bin", codex_bin])
     return run_omnidoer_public_command(command, workspace, mode, "omnidoer_control_sync_status", argv)
+
+
+def run_omnidoer_control_revoke_device(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    require_yolo(mode, "omnidoer_control_revoke_device", "revoking a paired device changes Control Client access")
+    args = command_args(command)
+    device_id = plain_token_arg({"device_id": args.get("device_id") or args.get("id")}, "device_id", "omnidoer_control_revoke_device", required=True)
+    return run_omnidoer_public_command(command, workspace, mode, "omnidoer_control_revoke_device", [*omnidoer_base_argv(), "control", "revoke-device", device_id])
+
+
+def run_omnidoer_control_revoke_session(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    require_yolo(mode, "omnidoer_control_revoke_session", "revoking a session changes Control Client access")
+    args = command_args(command)
+    session_id = plain_token_arg({"session_id": args.get("session_id") or args.get("id")}, "session_id", "omnidoer_control_revoke_session", required=True)
+    return run_omnidoer_public_command(command, workspace, mode, "omnidoer_control_revoke_session", [*omnidoer_base_argv(), "control", "revoke-session", session_id])
+
+
+def run_omnidoer_control_enable_sync(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    require_yolo(mode, "omnidoer_control_enable_sync", "enabling sync may attach or alter a Codex/OmniDoer session bridge")
+    args = command_args(command)
+    argv = [*omnidoer_base_argv(), "control", "enable-sync"]
+    thread_id = plain_token_arg(args, "thread_id", "omnidoer_control_enable_sync")
+    if thread_id:
+        argv.extend(["--thread-id", thread_id])
+    codex_bin = str(args.get("codex_bin") or "")
+    if codex_bin:
+        argv.extend(["--codex-bin", codex_bin])
+    if bool(args.get("yes")):
+        argv.append("--yes")
+    if bool(args.get("wait")):
+        argv.append("--wait")
+    timeout = str(args.get("timeout") or "")
+    if timeout:
+        argv.extend(["--timeout", timeout])
+    return run_omnidoer_public_command(command, workspace, mode, "omnidoer_control_enable_sync", argv)
+
+
+def run_omnidoer_request_challenge(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    require_yolo(mode, "omnidoer_request_challenge", "challenging a request changes Control Client request ownership/state")
+    args = command_args(command)
+    request_id = request_id_arg(args, "omnidoer_request_challenge")
+    return run_omnidoer_public_command(command, workspace, mode, "omnidoer_request_challenge", [*omnidoer_base_argv(), "control", "challenge", request_id])
+
+
+def run_omnidoer_request_takeover(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    require_yolo(mode, "omnidoer_request_takeover", "taking over a request changes Control Client request ownership/state")
+    args = command_args(command)
+    request_id = request_id_arg(args, "omnidoer_request_takeover")
+    return run_omnidoer_public_command(command, workspace, mode, "omnidoer_request_takeover", [*omnidoer_base_argv(), "control", "takeover", request_id])
+
+
+def run_omnidoer_request_release(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    require_yolo(mode, "omnidoer_request_release", "releasing a request changes Control Client request ownership/state")
+    args = command_args(command)
+    request_id = request_id_arg(args, "omnidoer_request_release")
+    return run_omnidoer_public_command(command, workspace, mode, "omnidoer_request_release", [*omnidoer_base_argv(), "control", "release", request_id])
 
 
 def run_omnidoer_audit_tail(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
@@ -2206,6 +2278,12 @@ registry.register("omnidoer_control_sessions", run_omnidoer_control_sessions)
 registry.register("omnidoer_control_tunnel_info", run_omnidoer_control_tunnel_info)
 registry.register("omnidoer_control_security_status", run_omnidoer_control_security_status)
 registry.register("omnidoer_control_sync_status", run_omnidoer_control_sync_status)
+registry.register("omnidoer_control_revoke_device", run_omnidoer_control_revoke_device)
+registry.register("omnidoer_control_revoke_session", run_omnidoer_control_revoke_session)
+registry.register("omnidoer_control_enable_sync", run_omnidoer_control_enable_sync)
+registry.register("omnidoer_request_challenge", run_omnidoer_request_challenge)
+registry.register("omnidoer_request_takeover", run_omnidoer_request_takeover)
+registry.register("omnidoer_request_release", run_omnidoer_request_release)
 registry.register("omnidoer_audit_tail", run_omnidoer_audit_tail)
 registry.register("omnidoer_audit_verify", run_omnidoer_audit_verify)
 registry.register("omnidoer_policy_test", run_omnidoer_policy_test)
