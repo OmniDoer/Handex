@@ -32,6 +32,7 @@ from .db import (
     update_project_goal,
     update_project,
 )
+from .history import sanitize_log_for_display
 from .parser import parse_llm_reply
 from .plugins import list_plugins
 from .prompts import (
@@ -124,7 +125,7 @@ def project_page_context(project: dict[str, Any], **extra: Any) -> dict[str, Any
         vault_error = f"{type(exc).__name__}: {exc}"
     context_pack = build_context_pack(project.get("workspace_path") or ".", max_chars=12000)
     summaries = list_summaries(int(project["id"]))
-    logs = list_logs(int(project["id"]))
+    logs = [sanitize_log_for_display(log) for log in list_logs(int(project["id"]))]
     context = {
         "project": project,
         "start_prompt": build_start_prompt(project),

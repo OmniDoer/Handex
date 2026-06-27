@@ -36,6 +36,7 @@ TOOL_NAMES = [
     "capability_report",
     "context_pack",
     "list_uploads",
+    "recent_results",
     "plugin_list",
     "plugin_run",
 ]
@@ -89,7 +90,7 @@ DEFAULT_TOOL_PROTOCOL = """When you need Linux tools, output exactly one Tool Co
 
 Schema:
 {
-  "tool": "shell | python | read_file | write_file | append_file | replace_file | delete_file | list_files | search_files | grep | git | git_bootstrap | apply_patch | list_skills | read_skill | skill_pack | list_vault_credentials | vault_list | vault_run | capability_report | context_pack | list_uploads | plugin_list | plugin_run",
+  "tool": "shell | python | read_file | write_file | append_file | replace_file | delete_file | list_files | search_files | grep | git | git_bootstrap | apply_patch | list_skills | read_skill | skill_pack | list_vault_credentials | vault_list | vault_run | capability_report | context_pack | list_uploads | recent_results | plugin_list | plugin_run",
   "args": {},
   "cwd": ".",
   "mode": "safe",
@@ -111,6 +112,7 @@ Examples:
 {"tool":"capability_report","args":{},"mode":"safe","reason":"inspect configured Handex skill roots and providers"}
 {"tool":"context_pack","args":{},"cwd":".","mode":"safe","reason":"inspect Git status, AGENTS.md, manifests, and file tree"}
 {"tool":"list_uploads","args":{},"mode":"safe","reason":"inspect user-uploaded workspace files"}
+{"tool":"recent_results","args":{"limit":5,"include_result_prompt":true},"mode":"safe","reason":"recover recent execution results"}
 {"tool":"plugin_list","args":{},"mode":"safe","reason":"inspect configured Handex command plugins"}
 {"tool":"plugin_run","args":{"plugin_id":"example","input":{}},"cwd":".","mode":"safe","reason":"run a configured command plugin"}
 
@@ -191,6 +193,7 @@ Operating rules:
 - Use git_bootstrap to clone a repository only when the workspace is empty and the URL has no embedded credentials.
 - Use context_pack for Codex-style workspace orientation when Git status, AGENTS.md, manifests, or the file tree may matter.
 - Use list_uploads and read_file for user-uploaded files under .handex_uploads/.
+- Use recent_results when prior Tool Result text is needed to continue after a browser refresh or missed copy.
 - Use plugin_list before plugin_run; only run configured plugins that directly apply to the task.
 - Use apply_patch for focused code edits when a unified diff is clearer than write_file/replace_file.
 - After durable progress, update the Summary.

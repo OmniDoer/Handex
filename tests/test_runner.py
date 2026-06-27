@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 from handex import capabilities
+from handex.tools import runner
 from handex.tools.runner import ToolError, registry
 
 
@@ -160,6 +161,32 @@ class RunnerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaises(ToolError):
                 registry.run({"tool": "context_pack", "args": {}, "cwd": ".."}, tmp, "safe")
+
+    def test_recent_results_tool_uses_workspace_history(self):
+        original_recent_results = runner.project_logs_for_workspace
+        try:
+            runner.project_logs_for_workspace = lambda workspace, limit, include_result_prompt: [
+                {
+                    "id": 4,
+                    "event_type": "tool.execute",
+                    "mode": "safe",
+                    "command_json": "{}",
+                    "final_command": "printf ok",
+                    "cwd": str(workspace),
+                    "exit_code": 0,
+                    "stdout": "ok",
+                    "stderr": "",
+                    "result_prompt": "prompt" if include_result_prompt else "",
+                    "created_at": "now",
+                }
+            ]
+            with tempfile.TemporaryDirectory() as tmp:
+                result = registry.run({"tool": "recent_results", "args": {"include_result_prompt": True}}, tmp, "safe")
+
+            self.assertIn("printf ok", result.stdout)
+            self.assertIn("prompt", result.stdout)
+        finally:
+            runner.project_logs_for_workspace = original_recent_results
 
 
 if __name__ == "__main__":

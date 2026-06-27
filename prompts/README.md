@@ -48,3 +48,7 @@ for focused `read_file`, `grep`, or shell processing of user-provided files.
 Git bootstrap is exposed through project forms and the `git_bootstrap` tool.
 It lets a web LLM request a reviewed clone into an empty workspace without
 constructing shell commands or embedding credentials in URLs.
+
+Execution history recovery is exposed through the project page and
+`recent_results`. This lets the LLM or human recover sanitized command JSON,
+stdout, stderr, and Tool Result Prompts when a copy/paste loop is interrupted.

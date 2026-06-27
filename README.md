@@ -97,6 +97,7 @@ Built-in tools:
 - `capability_report`
 - `context_pack`
 - `list_uploads`
+- `recent_results`
 - `plugin_list`
 - `plugin_run`
 
@@ -136,6 +137,11 @@ through the project page. Uploaded files live under `.handex_uploads/` inside
 the workspace, so normal file tools can read, search, patch, or delete them
 after review.
 
+`recent_results` returns sanitized recent execution history for the current
+workspace, including command JSON, final command, stdout, stderr, and optionally
+the full Tool Result Prompt. This is useful when a browser refresh, missed copy,
+or model switch interrupts the manual loop.
+
 `git_bootstrap` clones a Git repository into an empty project workspace without
 shell interpolation. Repository URLs with embedded credentials are rejected;
 private clone flows should use reviewed Vault-backed commands instead of
@@ -169,6 +175,8 @@ LLM how to behave like a coding agent inside the Hand Loop:
 - request exact file reads and edits
 - apply focused unified diffs through `apply_patch`
 - inspect user-provided files through `list_uploads` and `read_file`
+- recover missed Tool Result text through `recent_results` or the project
+  Execution History section
 - use skills by asking Handex to list/read configured `SKILL.md` files
 - view vault credential metadata without exposing secrets
 - run reviewed commands with local vault secrets injected through environment variables
@@ -373,6 +381,23 @@ return only valid JSON that matches the Tool Command schema.
 The project page provides a Summary Prompt. The user copies it to the web LLM,
 pastes the returned Summary into Handex, and saves it. Handex records every
 saved Summary as history and supports rollback.
+
+## Execution History
+
+Each project page includes an Execution History section with the recent
+reviewed commands and their sanitized command JSON, final command, stdout,
+stderr, and Tool Result Prompt. Each field has a copy button so the human can
+recover a missed result prompt after a browser refresh or continue a session in
+another web LLM.
+
+The same data is available to the LLM through:
+
+```json
+{"tool":"recent_results","args":{"limit":5,"include_result_prompt":true},"mode":"safe","reason":"recover recent execution results"}
+```
+
+History display redaction is heuristic. Avoid printing raw credentials in
+normal command output.
 
 ## Continuation Transcript
 

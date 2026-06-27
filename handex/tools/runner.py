@@ -18,6 +18,7 @@ from ..bootstrap import BootstrapError, bootstrap_workspace_from_git, redacted_r
 from ..capabilities import configured_capability_report, list_skills, list_vault_metadata, read_skill, skill_pack_prompt
 from ..config import settings
 from ..context import build_context_pack
+from ..history import project_logs_for_workspace
 from ..plugins import find_plugin, list_plugins, plugin_argv
 from ..prompts import TOOL_SCHEMA
 from ..uploads import list_workspace_uploads
@@ -275,7 +276,7 @@ def preview_command(command: dict[str, Any]) -> str:
         return f"{tool} {args.get('path') or args.get('root') or '.'}"
     if tool == "read_skill":
         return f"read_skill {args.get('skill_id') or args.get('name') or ''}"
-    if tool in {"list_skills", "skill_pack", "list_vault_credentials", "vault_list", "capability_report", "context_pack", "list_uploads", "plugin_list"}:
+    if tool in {"list_skills", "skill_pack", "list_vault_credentials", "vault_list", "capability_report", "context_pack", "list_uploads", "recent_results", "plugin_list"}:
         return tool
     if tool == "plugin_run":
         return f"plugin_run {args.get('plugin_id') or args.get('id') or args.get('name') or ''}"
@@ -739,6 +740,22 @@ def run_list_uploads(command: dict[str, Any], workspace: Path, mode: str) -> Too
     return ToolResult("list_uploads", command, mode, str(workspace), "list_uploads", 0, output + "\n", "")
 
 
+def run_recent_results(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    args = command_args(command)
+    try:
+        limit = int(args.get("limit") or 5)
+    except (TypeError, ValueError):
+        limit = 5
+    include_result_prompt = bool(args.get("include_result_prompt") or args.get("include_prompts") or False)
+    logs = project_logs_for_workspace(
+        workspace,
+        limit=max(1, min(limit, 30)),
+        include_result_prompt=include_result_prompt,
+    )
+    output = json.dumps(logs, ensure_ascii=False, indent=2)
+    return ToolResult("recent_results", command, mode, str(workspace), "recent_results", 0, output + "\n", "")
+
+
 def run_plugin_list(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
     output = json.dumps(
         [
@@ -823,5 +840,6 @@ registry.register("vault_run", run_vault_run)
 registry.register("capability_report", run_capability_report)
 registry.register("context_pack", run_context_pack)
 registry.register("list_uploads", run_list_uploads)
+registry.register("recent_results", run_recent_results)
 registry.register("plugin_list", run_plugin_list)
 registry.register("plugin_run", run_plugin_run)
