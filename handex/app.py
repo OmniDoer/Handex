@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request, status
-from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -22,6 +22,7 @@ from .db import (
     ensure_workspace,
     get_project,
     get_summary,
+    import_summary,
     init_db,
     list_logs,
     list_projects,
@@ -40,6 +41,7 @@ from .prompts import (
     build_summary_prompt,
     build_tool_result_prompt,
 )
+from .snapshot import build_project_snapshot, dumps_snapshot, imported_project_data, parse_snapshot
 from .tools.runner import ToolError, ToolResult, preview_command, registry
 from .transcript import build_project_transcript
 from .vault import VaultError, create_item as vault_create_item, delete_item as vault_delete_item, list_items as vault_list_items, vault_enabled
@@ -66,6 +68,17 @@ def redirect(path: str) -> RedirectResponse:
 def slugify(value: str) -> str:
     slug = re.sub(r"[^a-zA-Z0-9._-]+", "-", value.strip().lower()).strip("-")
     return slug or "project"
+
+
+def unique_workspace_path(name: str) -> str:
+    base = settings.projects_dir / slugify(name)
+    if not base.exists():
+        return str(base)
+    for index in range(2, 1000):
+        candidate = settings.projects_dir / f"{base.name}-{index}"
+        if not candidate.exists():
+            return str(candidate)
+    return str(settings.projects_dir / f"{base.name}-imported")
 
 
 def project_or_404(project_id: int) -> dict[str, Any]:
@@ -182,11 +195,64 @@ def create_project_route(
     return redirect(f"/projects/{project_id}")
 
 
+@app.post("/projects/import")
+def import_project_route(
+    snapshot_json: Annotated[str, Form()],
+    workspace_path: Annotated[str, Form()] = "",
+    _: None = Depends(require_auth),
+) -> RedirectResponse:
+    try:
+        snapshot = parse_snapshot(snapshot_json)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    source_project = snapshot["project"]
+    name = str(source_project.get("name") or "Imported Project")
+    workspace = workspace_path.strip() or unique_workspace_path(f"{name}-imported")
+    ensure_workspace(workspace)
+    project_id = create_project(imported_project_data(snapshot, workspace))
+    for summary in reversed([item for item in snapshot.get("summaries", []) if isinstance(item, dict)]):
+        import_summary(
+            project_id,
+            str(summary.get("content") or ""),
+            str(summary.get("note") or ""),
+            str(summary.get("created_at") or ""),
+        )
+    for log in reversed([item for item in snapshot.get("logs", []) if isinstance(item, dict)]):
+        add_log(
+            project_id,
+            str(log.get("event_type") or "snapshot.imported_event"),
+            mode=str(log.get("mode") or ""),
+            command_json=str(log.get("command_json") or ""),
+            final_command=str(log.get("final_command") or ""),
+            cwd=str(log.get("cwd") or ""),
+            exit_code=log.get("exit_code") if isinstance(log.get("exit_code"), int) else None,
+            stdout=str(log.get("stdout") or ""),
+            stderr=str(log.get("stderr") or ""),
+            result_prompt=str(log.get("result_prompt") or ""),
+            created_at=str(log.get("created_at") or ""),
+        )
+    add_log(project_id, "snapshot.import", stdout="Imported Handex project snapshot.")
+    return redirect(f"/projects/{project_id}")
+
+
 @app.get("/projects/{project_id}", response_class=HTMLResponse)
 def project_page(request: Request, project_id: int, _: None = Depends(require_auth)) -> HTMLResponse:
     project = project_or_404(project_id)
     ensure_workspace(project["workspace_path"])
     return templates.TemplateResponse("project.html", {"request": request, **project_page_context(project)})
+
+
+@app.get("/projects/{project_id}/export")
+def export_project_route(project_id: int, _: None = Depends(require_auth)) -> Response:
+    project = project_or_404(project_id)
+    context_pack = build_context_pack(project.get("workspace_path") or ".", max_chars=12000)
+    snapshot = build_project_snapshot(project, list_summaries(project_id), list_logs(project_id, limit=200), context_pack)
+    filename = f"handex-{slugify(str(project.get('name') or 'project'))}-snapshot.json"
+    return Response(
+        dumps_snapshot(snapshot),
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.post("/projects/{project_id}/settings")

@@ -224,6 +224,14 @@ pre {
   gap: 16px;
 }
 
+.project-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 .crumb {
   display: flex;
   flex-wrap: wrap;

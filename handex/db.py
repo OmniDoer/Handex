@@ -192,6 +192,16 @@ def save_summary(project_id: int, content: str, note: str = "") -> int:
         return int(cursor.lastrowid)
 
 
+def import_summary(project_id: int, content: str, note: str = "", created_at: str = "") -> int:
+    timestamp = created_at or now_iso()
+    with connect() as conn:
+        cursor = conn.execute(
+            "INSERT INTO summary_history (project_id, content, note, created_at) VALUES (?, ?, ?, ?)",
+            (project_id, content, note, timestamp),
+        )
+        return int(cursor.lastrowid)
+
+
 def list_summaries(project_id: int) -> list[dict[str, Any]]:
     with connect() as conn:
         rows = conn.execute(
@@ -219,6 +229,7 @@ def add_log(
     stdout: str = "",
     stderr: str = "",
     result_prompt: str = "",
+    created_at: str = "",
 ) -> int:
     with connect() as conn:
         cursor = conn.execute(
@@ -239,7 +250,7 @@ def add_log(
                 stdout,
                 stderr,
                 result_prompt,
-                now_iso(),
+                created_at or now_iso(),
             ),
         )
         return int(cursor.lastrowid)

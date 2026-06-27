@@ -44,4 +44,19 @@
     <button type="submit">Create</button>
   </form>
 </details>
+
+<details class="section-block">
+  <summary>Import Snapshot</summary>
+  <form class="stack" method="post" action="/projects/import">
+    <label>
+      Snapshot JSON
+      <textarea name="snapshot_json" class="mono tall" required placeholder="Paste a Handex project snapshot JSON export here."></textarea>
+    </label>
+    <label>
+      Workspace Path
+      <input name="workspace_path" placeholder="Leave blank to create a new workspace under projects/">
+    </label>
+    <button type="submit">Import Snapshot</button>
+  </form>
+</details>
 {% endblock %}

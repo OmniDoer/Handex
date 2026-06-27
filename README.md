@@ -51,6 +51,7 @@ Each project stores:
 - Logs
 - Summary history
 - Continuation transcript for resuming with another web LLM
+- Redacted JSON snapshot export/import
 
 Projects can be created, edited, entered, and deleted from the web UI.
 
@@ -294,6 +295,19 @@ Transcript redaction is heuristic. Handex redacts common secret-like lines and
 token patterns before rendering the transcript, but users should still avoid
 printing raw credentials in ordinary shell commands.
 
+## Project Snapshots
+
+Each project can be exported as a redacted JSON snapshot and imported back as a
+new project. Snapshots are intended for backups, moving work between Handex
+instances, or handing a task to another operator without copying the whole
+SQLite database.
+
+Snapshots include project metadata, prompt settings, current summary, project
+state, summary history, recent logs, and a context snapshot. They intentionally
+exclude Handex Vault secrets and encrypted vault rows. Secret-like lines and
+common token patterns are redacted before export, but snapshot redaction is
+heuristic; avoid printing raw credentials into normal command output.
+
 ## Safe Mode and YOLO Mode
 
 Safe Mode is the default. It keeps paths and working directories inside the
@@ -404,6 +418,5 @@ handex/
 - Richer plugin loading from `plugins/`
 - Streaming command output
 - Nginx optional TLS reverse proxy
-- Import/export project snapshots
 - Workspace Git repository bootstrap helpers
 - Offline read-only project cache

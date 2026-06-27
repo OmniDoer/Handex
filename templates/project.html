@@ -8,7 +8,10 @@
     <h1>{{ project.name }}</h1>
     <p>{{ project.goal or project.description or "No active goal set." }}</p>
   </div>
-  <span class="mode-pill {{ project_mode }}">{{ project_mode|upper }}</span>
+  <div class="project-actions">
+    <a class="button secondary" href="/projects/{{ project.id }}/export">Export Snapshot</a>
+    <span class="mode-pill {{ project_mode }}">{{ project_mode|upper }}</span>
+  </div>
 </section>
 
 <section class="section-block compact" id="goal">
