@@ -39,6 +39,7 @@ TOOL_NAMES = [
     "context_pack",
     "list_uploads",
     "recent_results",
+    "tool_batch",
     "update_plan",
     "plan_status",
     "job_status",
@@ -96,7 +97,7 @@ DEFAULT_TOOL_PROTOCOL = """When you need Linux tools, output exactly one Tool Co
 
 Schema:
 {
-  "tool": "shell | background_shell | python | read_file | write_file | append_file | replace_file | delete_file | list_files | search_files | grep | git | git_bootstrap | apply_patch | list_skills | read_skill | skill_pack | list_vault_credentials | vault_list | vault_run | capability_report | context_pack | list_uploads | recent_results | update_plan | plan_status | job_status | job_stop | plugin_list | plugin_run",
+  "tool": "shell | background_shell | python | read_file | write_file | append_file | replace_file | delete_file | list_files | search_files | grep | git | git_bootstrap | apply_patch | list_skills | read_skill | skill_pack | list_vault_credentials | vault_list | vault_run | capability_report | context_pack | list_uploads | recent_results | tool_batch | update_plan | plan_status | job_status | job_stop | plugin_list | plugin_run",
   "args": {},
   "cwd": ".",
   "mode": "safe",
@@ -122,6 +123,7 @@ Examples:
 {"tool":"context_pack","args":{},"cwd":".","mode":"safe","reason":"inspect Git status, inherited AGENTS.md, manifests, and file tree"}
 {"tool":"list_uploads","args":{},"mode":"safe","reason":"inspect user-uploaded workspace files"}
 {"tool":"recent_results","args":{"limit":5,"include_result_prompt":true},"mode":"safe","reason":"recover recent execution results"}
+{"tool":"tool_batch","args":{"commands":[{"tool":"read_file","args":{"path":"README.md"}},{"tool":"grep","args":{"pattern":"TODO","path":"."}}],"stop_on_error":false},"mode":"safe","reason":"run independent read-only inspections in one reviewed step"}
 {"tool":"update_plan","args":{"explanation":"Working through the implementation.","plan":[{"step":"Inspect current code","status":"completed"},{"step":"Patch focused files","status":"in_progress"},{"step":"Run tests","status":"pending"}]},"mode":"safe","reason":"publish the current working plan"}
 {"tool":"plan_status","args":{},"mode":"safe","reason":"read the current project plan"}
 {"tool":"plugin_list","args":{},"mode":"safe","reason":"inspect configured Handex command plugins"}
@@ -209,6 +211,7 @@ Operating rules:
 - Use context_pack for Codex-style workspace orientation when Git status, inherited AGENTS.md rules, manifests, or the file tree may matter.
 - Use list_uploads and read_file for user-uploaded files under .handex_uploads/.
 - Use recent_results when prior Tool Result text is needed to continue after a browser refresh or missed copy.
+- Use tool_batch for multiple independent read-only inspections in one reviewed step; Safe Mode batches cannot write files or run shell commands.
 - Use update_plan to keep a visible project plan current when work has multiple steps; keep at most one item in_progress.
 - Use plugin_list before plugin_run; only run configured plugins that directly apply to the task.
 - Use apply_patch for focused code edits when a unified diff is clearer than write_file/replace_file.

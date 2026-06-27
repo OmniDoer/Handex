@@ -58,6 +58,11 @@ Execution history recovery is exposed through the project page and
 `recent_results`. This lets the LLM or human recover sanitized command JSON,
 stdout, stderr, and Tool Result Prompts when a copy/paste loop is interrupted.
 
+Independent read-only inspection commands can be grouped with `tool_batch`.
+Safe Mode batches are limited to read-only tools and read-only git subcommands,
+so they reduce copy/paste overhead for broad context gathering without turning a
+single approval into unreviewed file edits or shell execution.
+
 Long-running command support is exposed through `background_shell`,
 `job_status`, and `job_stop`. The prompt tells the LLM to start long commands
 as background jobs, poll output tails, and stop jobs that are no longer useful.

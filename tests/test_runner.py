@@ -1,3 +1,4 @@
+import json
 import tempfile
 import textwrap
 import types
@@ -210,6 +211,78 @@ class RunnerTests(unittest.TestCase):
             self.assertIn("prompt", result.stdout)
         finally:
             runner.project_logs_for_workspace = original_recent_results
+
+    def test_tool_batch_runs_safe_read_only_commands(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "README.md").write_text("hello\nTODO item\n", encoding="utf-8")
+
+            result = registry.run(
+                {
+                    "tool": "tool_batch",
+                    "args": {
+                        "commands": [
+                            {"tool": "read_file", "args": {"path": "README.md"}},
+                            {"tool": "grep", "args": {"pattern": "TODO", "path": "."}},
+                        ],
+                        "stop_on_error": False,
+                    },
+                },
+                tmp,
+                "safe",
+            )
+            payload = json.loads(result.stdout)
+
+            self.assertEqual(result.exit_code, 0)
+            self.assertEqual(payload["completed"], 2)
+            self.assertIn("hello", payload["results"][0]["stdout"])
+            self.assertIn("TODO item", payload["results"][1]["stdout"])
+
+    def test_tool_batch_can_continue_after_read_only_child_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "ok.txt").write_text("ok\n", encoding="utf-8")
+
+            result = registry.run(
+                {
+                    "tool": "tool_batch",
+                    "args": {
+                        "commands": [
+                            {"tool": "read_file", "args": {"path": "missing.txt"}},
+                            {"tool": "read_file", "args": {"path": "ok.txt"}},
+                        ],
+                        "stop_on_error": False,
+                    },
+                },
+                tmp,
+                "safe",
+            )
+            payload = json.loads(result.stdout)
+
+            self.assertEqual(result.exit_code, 1)
+            self.assertEqual(payload["completed"], 2)
+            self.assertIn("FileNotFoundError", payload["results"][0]["stderr"])
+            self.assertIn("ok", payload["results"][1]["stdout"])
+
+    def test_tool_batch_safe_mode_blocks_write_children_before_running(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "created.txt"
+
+            with self.assertRaises(ToolError):
+                registry.run(
+                    {
+                        "tool": "tool_batch",
+                        "args": {
+                            "commands": [
+                                {"tool": "write_file", "args": {"path": "created.txt", "content": "no"}},
+                                {"tool": "read_file", "args": {"path": "created.txt"}},
+                            ]
+                        },
+                    },
+                    tmp,
+                    "safe",
+                )
+
+            self.assertFalse(path.exists())
 
 
 if __name__ == "__main__":

@@ -23,7 +23,7 @@ from ..history import project_logs_for_workspace
 from ..jobs import get_job_display, list_project_job_displays, project_id_for_workspace, start_background_shell, stop_job
 from ..plans import normalize_plan_payload, plan_form_json
 from ..plugins import find_plugin, list_plugins, plugin_argv
-from ..prompts import TOOL_SCHEMA
+from ..prompts import TOOL_SCHEMA, redact_command_string, sanitize_command_for_prompt
 from ..uploads import list_workspace_uploads
 from ..vault import decrypt_item_secret, metadata_for_tools
 
@@ -46,6 +46,26 @@ SAFE_SHELL_BLOCKLIST = [
     r"\bchown\s+-R\s+.*\s/",
     r"(curl|wget)[^|;]*\|\s*(sh|bash)",
 ]
+SAFE_BATCH_TOOLS = {
+    "read_file",
+    "list_files",
+    "search_files",
+    "grep",
+    "list_skills",
+    "read_skill",
+    "skill_pack",
+    "list_vault_credentials",
+    "vault_list",
+    "capability_report",
+    "context_pack",
+    "list_uploads",
+    "recent_results",
+    "plan_status",
+    "job_status",
+    "plugin_list",
+}
+SAFE_BATCH_GIT_COMMANDS = {"status", "log", "show", "diff", "rev-parse", "ls-files", "grep", "describe", "blame"}
+MAX_BATCH_COMMANDS = 12
 
 
 @dataclass
@@ -181,6 +201,11 @@ def validate_preview(command: dict[str, Any], workspace: Path, cwd: Path, mode: 
         warnings.append("Safe Mode requires cwd inside workspace.")
     if tool in {"shell", "background_shell"} and mode == "safe":
         warnings.extend(validate_safe_shell(str(command_args(command).get("command") or command.get("command") or "")))
+    if tool == "tool_batch":
+        try:
+            validate_batch_children(command, mode)
+        except ToolError as exc:
+            warnings.append(str(exc))
     return warnings
 
 
@@ -279,6 +304,12 @@ def preview_command(command: dict[str, Any]) -> str:
         return "git apply --check && git apply"
     if tool in {"read_file", "write_file", "append_file", "replace_file", "delete_file", "list_files", "search_files", "grep"}:
         return f"{tool} {args.get('path') or args.get('root') or '.'}"
+    if tool == "tool_batch":
+        try:
+            count = len(batch_child_commands(command))
+        except ToolError:
+            count = 0
+        return f"tool_batch {count} command(s)"
     if tool == "read_skill":
         return f"read_skill {args.get('skill_id') or args.get('name') or ''}"
     if tool in {"list_skills", "skill_pack", "list_vault_credentials", "vault_list", "capability_report", "context_pack", "list_uploads", "recent_results", "job_status", "plugin_list", "plan_status"}:
@@ -789,6 +820,108 @@ def run_recent_results(command: dict[str, Any], workspace: Path, mode: str) -> T
     return ToolResult("recent_results", command, mode, str(workspace), "recent_results", 0, output + "\n", "")
 
 
+def batch_child_commands(command: dict[str, Any]) -> list[dict[str, Any]]:
+    args = command_args(command)
+    raw = args.get("commands")
+    if raw is None:
+        raw = args.get("tool_commands")
+    if raw is None:
+        raw = args.get("items")
+    if not isinstance(raw, list) or not raw:
+        raise ToolError("tool_batch args.commands must be a non-empty list")
+    if len(raw) > MAX_BATCH_COMMANDS:
+        raise ToolError(f"tool_batch can run at most {MAX_BATCH_COMMANDS} commands")
+    children: list[dict[str, Any]] = []
+    for index, item in enumerate(raw, start=1):
+        if not isinstance(item, dict):
+            raise ToolError(f"tool_batch command #{index} must be a JSON object")
+        children.append(item)
+    return children
+
+
+def validate_batch_child(command: dict[str, Any], parent_mode: str) -> str:
+    tool = str(command.get("tool") or "")
+    if tool not in TOOL_SCHEMA["properties"]["tool"]["enum"]:
+        raise ToolError(f"Unsupported tool in batch: {tool}")
+    if tool == "tool_batch":
+        raise ToolError("tool_batch cannot contain nested tool_batch commands")
+    mode = normalize_mode(command.get("mode") or parent_mode)
+    if parent_mode == "safe" and mode != "safe":
+        raise ToolError("Safe Mode tool_batch cannot contain YOLO child commands")
+    if parent_mode == "safe":
+        if tool == "git":
+            git_args = git_command_args(command)
+            if not git_args or git_args[0] not in SAFE_BATCH_GIT_COMMANDS:
+                raise ToolError("Safe Mode tool_batch only permits read-only git subcommands")
+        elif tool not in SAFE_BATCH_TOOLS:
+            raise ToolError(f"Safe Mode tool_batch only permits read-only tools; blocked {tool}")
+    return mode
+
+
+def validate_batch_children(command: dict[str, Any], parent_mode: str) -> list[tuple[dict[str, Any], str]]:
+    return [(child, validate_batch_child(child, parent_mode)) for child in batch_child_commands(command)]
+
+
+def compact_batch_text(value: str, limit: int) -> str:
+    if len(value) <= limit:
+        return value
+    return value[:limit] + "\n...[batch result truncated by Handex]..."
+
+
+def run_tool_batch(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    args = command_args(command)
+    try:
+        max_chars_per_result = int(args.get("max_chars_per_result") or 5000)
+    except (TypeError, ValueError):
+        max_chars_per_result = 5000
+    max_chars_per_result = max(500, min(max_chars_per_result, settings.max_output_chars))
+    stop_on_error = bool(args.get("stop_on_error", True))
+    children = validate_batch_children(command, mode)
+    results = []
+    stopped_on_error = False
+    for index, (child, child_mode) in enumerate(children, start=1):
+        child_command = dict(child)
+        child_command.setdefault("mode", child_mode)
+        try:
+            result = registry.run(child_command, str(workspace), child_mode)
+            entry = {
+                "index": index,
+                "tool": result.tool,
+                "mode": result.mode,
+                "cwd": result.cwd,
+                "command": sanitize_command_for_prompt(result.command),
+                "final_command": redact_command_string(result.final_command),
+                "exit_code": result.exit_code,
+                "stdout": compact_batch_text(result.stdout or "", max_chars_per_result),
+                "stderr": compact_batch_text(result.stderr or "", max_chars_per_result),
+            }
+        except Exception as exc:
+            entry = {
+                "index": index,
+                "tool": str(child.get("tool") or ""),
+                "mode": child_mode,
+                "cwd": str(workspace),
+                "command": sanitize_command_for_prompt(child),
+                "final_command": preview_command(child),
+                "exit_code": 1,
+                "stdout": "",
+                "stderr": f"{type(exc).__name__}: {exc}\n",
+            }
+        results.append(entry)
+        if int(entry["exit_code"]) != 0 and stop_on_error:
+            stopped_on_error = index < len(children)
+            break
+    exit_code = 0 if all(int(item["exit_code"]) == 0 for item in results) else 1
+    payload = {
+        "results": results,
+        "stopped_on_error": stopped_on_error,
+        "requested": len(children),
+        "completed": len(results),
+    }
+    output = json.dumps(payload, ensure_ascii=False, indent=2)
+    return ToolResult("tool_batch", command, mode, str(workspace), f"tool_batch {len(children)} command(s)", exit_code, output + "\n", "")
+
+
 def run_update_plan(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
     args = command_args(command)
     payload: Any = args if ("plan" in args or "items" in args or "explanation" in args) else command
@@ -939,6 +1072,7 @@ registry.register("capability_report", run_capability_report)
 registry.register("context_pack", run_context_pack)
 registry.register("list_uploads", run_list_uploads)
 registry.register("recent_results", run_recent_results)
+registry.register("tool_batch", run_tool_batch)
 registry.register("update_plan", run_update_plan)
 registry.register("plan_status", run_plan_status)
 registry.register("job_status", run_job_status)

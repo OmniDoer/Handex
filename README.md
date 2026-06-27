@@ -100,6 +100,7 @@ Built-in tools:
 - `context_pack`
 - `list_uploads`
 - `recent_results`
+- `tool_batch`
 - `update_plan`
 - `plan_status`
 - `job_status`
@@ -148,6 +149,13 @@ workspace, including command JSON, final command, stdout, stderr, and optionally
 the full Tool Result Prompt. This is useful when a browser refresh, missed copy,
 or model switch interrupts the manual loop.
 
+`tool_batch` runs multiple reviewed child Tool Commands in one Tool Result.
+Safe Mode batches are limited to read-only inspection tools and read-only git
+subcommands such as `status`, `log`, `show`, and `diff`; they cannot write
+files, run shell commands, or start background jobs. This mirrors the common
+Codex pattern of parallel file reads while preserving a single human approval
+step.
+
 `update_plan` replaces the current visible project plan with reviewed steps and
 statuses (`pending`, `in_progress`, or `completed`). `plan_status` returns the
 same plan as JSON. This mirrors the Codex planning surface for multi-step work
@@ -193,6 +201,7 @@ LLM how to behave like a coding agent inside the Hand Loop:
 - inspect user-provided files through `list_uploads` and `read_file`
 - recover missed Tool Result text through `recent_results` or the project
   Execution History section
+- batch independent read-only inspections through `tool_batch`
 - keep a visible multi-step plan through `update_plan` and `plan_status`
 - run long commands through `background_shell`, then poll or stop them with
   `job_status` and `job_stop`
@@ -215,8 +224,8 @@ The migration target is muscle-memory compatibility:
 - review the same surface Codex would have reviewed internally: JSON, command,
   cwd, mode, diff preview, stdout, stderr, and result prompt
 - use familiar tools: `shell`, `python`, `git`, `apply_patch`, file tools,
-  `context_pack`, `update_plan`, skills, plugins, and vault-backed command
-  execution
+  `context_pack`, `tool_batch`, `update_plan`, skills, plugins, and
+  vault-backed command execution
 - keep working one step at a time until the Summary is updated
 
 The only new habit is moving text between the web LLM and Handex.
@@ -424,6 +433,20 @@ Read it back with:
 
 Plan statuses are `pending`, `in_progress`, and `completed`; Handex accepts at
 most one `in_progress` item.
+
+## Tool Batches
+
+For broad inspection turns, Handex supports one reviewed batch command:
+
+```json
+{"tool":"tool_batch","args":{"commands":[{"tool":"read_file","args":{"path":"README.md"}},{"tool":"grep","args":{"pattern":"TODO","path":"."}}],"stop_on_error":false},"mode":"safe","reason":"run independent read-only inspections in one reviewed step"}
+```
+
+Safe Mode batches are intentionally read-only. They support file reads/searches,
+context and history lookups, skills/vault metadata, plan status, job status,
+plugin lists, and read-only git subcommands. Use normal single commands for
+file edits, shell commands, background jobs, vault-backed commands, and plugin
+execution so the human reviews each side-effecting action directly.
 
 ## Execution History
 
