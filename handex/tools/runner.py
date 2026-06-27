@@ -89,6 +89,8 @@ SAFE_BATCH_TOOLS = {
     "omnidoer_console_dry_run",
     "omnidoer_upgrade_dry_run",
     "omnidoer_mcp_self_test",
+    "omnidoer_heartbeat_status",
+    "omnidoer_heartbeat_tasks",
     "plugin_list",
 }
 SAFE_BATCH_GIT_COMMANDS = {"status", "log", "show", "diff", "rev-parse", "ls-files", "grep", "describe", "blame"}
@@ -436,6 +438,27 @@ def preview_command(command: dict[str, Any]) -> str:
         return " ".join(shlex.quote(item) for item in upgrade_args)
     if tool == "omnidoer_mcp_self_test":
         return "omnidoer mcp serve --self-test"
+    if tool == "omnidoer_heartbeat_status":
+        return "omnidoer control heartbeat status"
+    if tool == "omnidoer_heartbeat_tasks":
+        return "omnidoer control heartbeat tasks"
+    if tool == "omnidoer_heartbeat_add_task":
+        task = str(args.get("task") or args.get("text") or "")
+        return f"omnidoer control heartbeat add-task {shlex.quote(redact_context_text(task)[:80])}"
+    if tool == "omnidoer_heartbeat_remove_task":
+        return f"omnidoer control heartbeat remove-task {args.get('task_id') or args.get('id') or ''}"
+    if tool == "omnidoer_heartbeat_enable":
+        preview_args = ["omnidoer", "control", "heartbeat", "enable"]
+        for key, cli_name in (("interval", "--interval"), ("min_idle", "--min-idle"), ("file", "--file"), ("heartbeat_file", "--file"), ("session_id", "--session-id")):
+            value = args.get(key)
+            if value not in (None, ""):
+                preview_args.extend([cli_name, str(value)])
+        return " ".join(shlex.quote(item) for item in preview_args)
+    if tool == "omnidoer_heartbeat_disable":
+        session_id = str(args.get("session_id") or "")
+        return "omnidoer control heartbeat disable" + (f" --session-id {shlex.quote(session_id)}" if session_id else "")
+    if tool == "omnidoer_heartbeat_run_once":
+        return "omnidoer control heartbeat run-once" + (" --force" if bool(args.get("force")) else "")
     if tool == "omnidoer_browser_open":
         return f"omnidoer browser open {args.get('url') or ''}"
     if tool == "git_bootstrap":
@@ -782,6 +805,24 @@ def safe_cli_value_arg(args: dict[str, Any], key: str, tool: str, *, required: b
     if value.startswith("-"):
         raise ToolError(f"{tool} args.{key} must not start with '-'")
     return value
+
+
+def public_text_arg(args: dict[str, Any], key: str, tool: str, *, required: bool = False, max_len: int = 8000) -> str:
+    value = str(args.get(key) or "")
+    if required and not value.strip():
+        raise ToolError(f"{tool} args.{key} is required")
+    if value and ("\x00" in value or len(value) > max_len):
+        raise ToolError(f"{tool} args.{key} contains an invalid character or is too long")
+    return value
+
+
+def heartbeat_task_id_arg(args: dict[str, Any], tool: str) -> str:
+    task_id = str(args.get("task_id") or args.get("heartbeat_task_id") or args.get("id") or "")
+    if not task_id:
+        raise ToolError(f"{tool} args.task_id is required")
+    if not re.fullmatch(r"hbt_[A-Za-z0-9_:-]+", task_id):
+        raise ToolError(f"{tool} args.task_id must look like hbt_<id>")
+    return task_id
 
 
 def string_list_arg(args: dict[str, Any], key: str, tool: str) -> list[str]:
@@ -1368,6 +1409,109 @@ def run_omnidoer_upgrade_dry_run(command: dict[str, Any], workspace: Path, mode:
 
 def run_omnidoer_mcp_self_test(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
     return run_omnidoer_public_command(command, workspace, mode, "omnidoer_mcp_self_test", [*omnidoer_base_argv(), "mcp", "serve", "--self-test"])
+
+
+def run_omnidoer_heartbeat_status(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    return run_omnidoer_public_command(command, workspace, mode, "omnidoer_heartbeat_status", [*omnidoer_base_argv(), "control", "heartbeat", "status"])
+
+
+def run_omnidoer_heartbeat_tasks(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    return run_omnidoer_public_command(command, workspace, mode, "omnidoer_heartbeat_tasks", [*omnidoer_base_argv(), "control", "heartbeat", "tasks"])
+
+
+def run_omnidoer_heartbeat_add_task(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    require_yolo(mode, "omnidoer_heartbeat_add_task", "adding a heartbeat task changes the persistent Control Client scheduler queue")
+    args = command_args(command)
+    task = public_text_arg({"task": args.get("task") if args.get("task") is not None else args.get("text")}, "task", "omnidoer_heartbeat_add_task", required=True)
+    argv = [*omnidoer_base_argv(), "control", "heartbeat", "add-task"]
+    title = public_text_arg(args, "title", "omnidoer_heartbeat_add_task", max_len=120).strip()
+    if title:
+        argv.extend(["--title", title])
+    try:
+        weight = int(args.get("weight") or 0)
+    except (TypeError, ValueError):
+        raise ToolError("omnidoer_heartbeat_add_task args.weight must be an integer") from None
+    if weight:
+        if weight < 1 or weight > 1000:
+            raise ToolError("omnidoer_heartbeat_add_task args.weight must be between 1 and 1000")
+        argv.extend(["--weight", str(weight)])
+    position = str(args.get("position") or "").strip()
+    if position:
+        if position not in {"random", "front", "back"}:
+            raise ToolError("omnidoer_heartbeat_add_task args.position must be random, front, or back")
+        argv.extend(["--position", position])
+    for key, cli_name, max_len in (
+        ("priority", "--priority", 200),
+        ("quota", "--quota", 200),
+        ("repo_path", "--repo-path", 500),
+        ("remote_url", "--remote-url", 500),
+        ("target", "--target", 500),
+    ):
+        value = public_text_arg(args, key, "omnidoer_heartbeat_add_task", max_len=max_len).strip()
+        if value:
+            if key == "remote_url":
+                parsed = urlparse(value)
+                if parsed.scheme and parsed.scheme not in {"http", "https"}:
+                    raise ToolError("omnidoer_heartbeat_add_task args.remote_url must be http(s) when a scheme is provided")
+                if parsed.username or parsed.password:
+                    raise ToolError("omnidoer_heartbeat_add_task args.remote_url must not contain embedded credentials")
+            argv.extend([cli_name, value])
+    deadline = safe_cli_value_arg(args, "deadline_utc", "omnidoer_heartbeat_add_task")
+    if deadline:
+        argv.extend(["--deadline-utc", deadline])
+    min_interval = safe_cli_value_arg(args, "min_interval", "omnidoer_heartbeat_add_task")
+    if min_interval:
+        argv.extend(["--min-interval", min_interval])
+    if bool(args.get("no_interrupt_active")) or args.get("interrupt_active") is False:
+        argv.append("--no-interrupt-active")
+    argv.append(task)
+    result = run_omnidoer_public_command(command, workspace, mode, "omnidoer_heartbeat_add_task", argv)
+    return ToolResult(result.tool, command, mode, result.cwd, redact_command_string(redact_context_text(result.final_command)), result.exit_code, result.stdout, result.stderr)
+
+
+def run_omnidoer_heartbeat_remove_task(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    require_yolo(mode, "omnidoer_heartbeat_remove_task", "removing a heartbeat task changes the persistent Control Client scheduler queue")
+    args = command_args(command)
+    task_id = heartbeat_task_id_arg(args, "omnidoer_heartbeat_remove_task")
+    return run_omnidoer_public_command(command, workspace, mode, "omnidoer_heartbeat_remove_task", [*omnidoer_base_argv(), "control", "heartbeat", "remove-task", task_id])
+
+
+def run_omnidoer_heartbeat_enable(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    require_yolo(mode, "omnidoer_heartbeat_enable", "enabling heartbeat changes persistent scheduler state")
+    args = command_args(command)
+    argv = [*omnidoer_base_argv(), "control", "heartbeat", "enable"]
+    for key, cli_name in (("interval", "--interval"), ("min_idle", "--min-idle")):
+        value = safe_cli_value_arg(args, key, "omnidoer_heartbeat_enable")
+        if value:
+            argv.extend([cli_name, value])
+    heartbeat_file = public_text_arg({"file": args.get("file") if args.get("file") is not None else args.get("heartbeat_file")}, "file", "omnidoer_heartbeat_enable", max_len=500).strip()
+    if heartbeat_file:
+        if "\n" in heartbeat_file or "\r" in heartbeat_file:
+            raise ToolError("omnidoer_heartbeat_enable args.file must be a single path")
+        argv.extend(["--file", heartbeat_file])
+    session_id = plain_token_arg(args, "session_id", "omnidoer_heartbeat_enable")
+    if session_id:
+        argv.extend(["--session-id", session_id])
+    return run_omnidoer_public_command(command, workspace, mode, "omnidoer_heartbeat_enable", argv)
+
+
+def run_omnidoer_heartbeat_disable(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    require_yolo(mode, "omnidoer_heartbeat_disable", "disabling heartbeat changes persistent scheduler state")
+    args = command_args(command)
+    argv = [*omnidoer_base_argv(), "control", "heartbeat", "disable"]
+    session_id = plain_token_arg(args, "session_id", "omnidoer_heartbeat_disable")
+    if session_id:
+        argv.extend(["--session-id", session_id])
+    return run_omnidoer_public_command(command, workspace, mode, "omnidoer_heartbeat_disable", argv)
+
+
+def run_omnidoer_heartbeat_run_once(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    require_yolo(mode, "omnidoer_heartbeat_run_once", "running heartbeat can enqueue a Control Client chat task")
+    args = command_args(command)
+    argv = [*omnidoer_base_argv(), "control", "heartbeat", "run-once"]
+    if bool(args.get("force")):
+        argv.append("--force")
+    return run_omnidoer_public_command(command, workspace, mode, "omnidoer_heartbeat_run_once", argv)
 
 
 def run_omnidoer_browser_open(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
@@ -2368,6 +2512,13 @@ registry.register("omnidoer_telegram_status", run_omnidoer_telegram_status)
 registry.register("omnidoer_console_dry_run", run_omnidoer_console_dry_run)
 registry.register("omnidoer_upgrade_dry_run", run_omnidoer_upgrade_dry_run)
 registry.register("omnidoer_mcp_self_test", run_omnidoer_mcp_self_test)
+registry.register("omnidoer_heartbeat_status", run_omnidoer_heartbeat_status)
+registry.register("omnidoer_heartbeat_tasks", run_omnidoer_heartbeat_tasks)
+registry.register("omnidoer_heartbeat_add_task", run_omnidoer_heartbeat_add_task)
+registry.register("omnidoer_heartbeat_remove_task", run_omnidoer_heartbeat_remove_task)
+registry.register("omnidoer_heartbeat_enable", run_omnidoer_heartbeat_enable)
+registry.register("omnidoer_heartbeat_disable", run_omnidoer_heartbeat_disable)
+registry.register("omnidoer_heartbeat_run_once", run_omnidoer_heartbeat_run_once)
 registry.register("omnidoer_browser_open", run_omnidoer_browser_open)
 registry.register("omnidoer_git", run_omnidoer_git)
 registry.register("omnidoer_github_api", run_omnidoer_github_api)

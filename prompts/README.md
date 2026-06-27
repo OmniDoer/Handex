@@ -103,6 +103,14 @@ upgrade actions, and run the MCP server self-test without launching Codex,
 installing files, or starting a persistent MCP process. Safe Mode permits an
 upgrade `branch`; overriding `install_dir` is YOLO-only.
 
+OmniDoer heartbeat scheduler reads are exposed through
+`omnidoer_heartbeat_status` and `omnidoer_heartbeat_tasks`. Mutating heartbeat
+tools are YOLO-only: `omnidoer_heartbeat_add_task`,
+`omnidoer_heartbeat_remove_task`, `omnidoer_heartbeat_enable`,
+`omnidoer_heartbeat_disable`, and `omnidoer_heartbeat_run_once`. These change
+persistent scheduler state or can enqueue Control Client chat work. Heartbeat
+task text is public coordination text, not a credential channel.
+
 Mutating Control Client management commands are YOLO-only:
 `omnidoer_control_revoke_device`, `omnidoer_control_revoke_session`,
 `omnidoer_control_enable_sync`, `omnidoer_request_challenge`,

@@ -139,6 +139,13 @@ Built-in tools:
 - `omnidoer_console_dry_run`
 - `omnidoer_upgrade_dry_run`
 - `omnidoer_mcp_self_test`
+- `omnidoer_heartbeat_status`
+- `omnidoer_heartbeat_tasks`
+- `omnidoer_heartbeat_add_task`
+- `omnidoer_heartbeat_remove_task`
+- `omnidoer_heartbeat_enable`
+- `omnidoer_heartbeat_disable`
+- `omnidoer_heartbeat_run_once`
 - `omnidoer_browser_open`
 - `capability_report`
 - `capability_search`
@@ -290,6 +297,15 @@ MCP server self-test without launching Codex, installing files, or starting a
 persistent MCP process. `omnidoer_upgrade_dry_run` allows a branch in Safe Mode;
 overriding `install_dir` requires YOLO Mode after review.
 
+`omnidoer_heartbeat_status` and `omnidoer_heartbeat_tasks` inspect OmniDoer's
+Control Client heartbeat scheduler and task queue. The mutating heartbeat tools
+are YOLO-only: `omnidoer_heartbeat_add_task`,
+`omnidoer_heartbeat_remove_task`, `omnidoer_heartbeat_enable`,
+`omnidoer_heartbeat_disable`, and `omnidoer_heartbeat_run_once`. They change
+persistent scheduler state or can enqueue chat work, so Safe Mode rejects them
+before invoking OmniDoer. Heartbeat task text is public coordination text, not a
+secret transport.
+
 Mutating Control Client management commands are exposed separately and are
 YOLO-only: `omnidoer_control_revoke_device`,
 `omnidoer_control_revoke_session`, `omnidoer_control_enable_sync`,
@@ -352,6 +368,8 @@ LLM how to behave like a coding agent inside the Hand Loop:
   audit, policy, and Telegram notification status without dropping to shell
 - preview OmniDoer console/upgrade behavior and run the MCP self-test without
   launching persistent runtime processes
+- inspect OmniDoer heartbeat scheduler state and manage persistent heartbeat
+  work only through reviewed YOLO actions
 - perform reviewed YOLO-only Control Client management actions such as
   revoking devices/sessions, enabling sync, or changing request ownership
 - open reviewed HTTPS URLs through OmniDoer's browser bridge
@@ -578,6 +596,17 @@ The related tools are:
   Safe Mode permits `branch`, while `install_dir` override is YOLO-only
 - `omnidoer_mcp_self_test`: run `omnidoer mcp serve --self-test` without
   starting a persistent MCP server
+- `omnidoer_heartbeat_status`: inspect heartbeat scheduler status
+- `omnidoer_heartbeat_tasks`: list heartbeat task queue entries
+- `omnidoer_heartbeat_add_task`: add reviewed public task text to the heartbeat
+  scheduler queue; YOLO Mode only
+- `omnidoer_heartbeat_remove_task`: remove a heartbeat task by `hbt_...` id;
+  YOLO Mode only
+- `omnidoer_heartbeat_enable`: enable heartbeat scheduling with reviewed
+  interval/min-idle/file/session options; YOLO Mode only
+- `omnidoer_heartbeat_disable`: disable heartbeat scheduling; YOLO Mode only
+- `omnidoer_heartbeat_run_once`: run one heartbeat scheduler pass, optionally
+  forced; YOLO Mode only
 - `omnidoer_browser_open`: open a reviewed URL; Safe Mode requires HTTPS
 - `omnidoer_git`: run `omnidoer git run` with the configured vault bridge
 - `omnidoer_github_api`: run `omnidoer github api` with the configured vault

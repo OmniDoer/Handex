@@ -78,6 +78,57 @@ class RunnerTests(unittest.TestCase):
                         "thread_id": argv[argv.index("--thread-id") + 1] if "--thread-id" in argv else None,
                         "has_codex_bin": "--codex-bin" in argv,
                     }))
+                elif argv[:3] == ["control", "heartbeat", "status"]:
+                    print(json.dumps({
+                        "enabled": True,
+                        "idle": True,
+                        "session_id": "default",
+                        "task_queue": {"enabled_count": 1, "tasks": [{"task_id": "hbt_test", "title": "Queue health"}]},
+                        "secret_fields_allowed": False,
+                    }))
+                elif argv[:3] == ["control", "heartbeat", "tasks"]:
+                    print(json.dumps([
+                        {
+                            "task_id": "hbt_test",
+                            "title": "Queue health",
+                            "text": "check queue\\napi_token=must-not-appear",
+                            "enabled": True,
+                            "secret_fields_allowed": False,
+                        }
+                    ]))
+                elif argv[:3] == ["control", "heartbeat", "add-task"]:
+                    print(json.dumps({
+                        "task_id": "hbt_added",
+                        "title": argv[argv.index("--title") + 1] if "--title" in argv else "",
+                        "weight": int(argv[argv.index("--weight") + 1]) if "--weight" in argv else 1,
+                        "position": argv[argv.index("--position") + 1] if "--position" in argv else "random",
+                        "priority": argv[argv.index("--priority") + 1] if "--priority" in argv else "",
+                        "quota": argv[argv.index("--quota") + 1] if "--quota" in argv else "",
+                        "repo_path": argv[argv.index("--repo-path") + 1] if "--repo-path" in argv else "",
+                        "remote_url": argv[argv.index("--remote-url") + 1] if "--remote-url" in argv else "",
+                        "target": argv[argv.index("--target") + 1] if "--target" in argv else "",
+                        "deadline_utc": argv[argv.index("--deadline-utc") + 1] if "--deadline-utc" in argv else "",
+                        "min_interval": argv[argv.index("--min-interval") + 1] if "--min-interval" in argv else "",
+                        "interrupt_active": "--no-interrupt-active" not in argv,
+                        "text": argv[-1],
+                    }))
+                elif argv[:3] == ["control", "heartbeat", "remove-task"]:
+                    print(json.dumps({"status": "removed", "task_id": argv[3]}))
+                elif argv[:3] == ["control", "heartbeat", "enable"]:
+                    print(json.dumps({
+                        "enabled": True,
+                        "interval": argv[argv.index("--interval") + 1] if "--interval" in argv else None,
+                        "min_idle": argv[argv.index("--min-idle") + 1] if "--min-idle" in argv else None,
+                        "file": argv[argv.index("--file") + 1] if "--file" in argv else None,
+                        "session_id": argv[argv.index("--session-id") + 1] if "--session-id" in argv else None,
+                    }))
+                elif argv[:3] == ["control", "heartbeat", "disable"]:
+                    print(json.dumps({
+                        "enabled": False,
+                        "session_id": argv[argv.index("--session-id") + 1] if "--session-id" in argv else None,
+                    }))
+                elif argv[:3] == ["control", "heartbeat", "run-once"]:
+                    print(json.dumps({"status": "queued", "message_id": "msg_heartbeat", "forced": "--force" in argv}))
                 elif argv[:2] == ["control", "revoke-device"]:
                     print(json.dumps({"status": "revoked", "device_id": argv[2]}))
                 elif argv[:2] == ["control", "revoke-session"]:
@@ -624,6 +675,87 @@ class RunnerTests(unittest.TestCase):
             yolo = registry.run({"tool": "omnidoer_upgrade_dry_run", "args": {"install_dir": "/opt/omnidoer"}}, tmp, "yolo")
 
         self.assertEqual(json.loads(yolo.stdout)["install_dir"], "/opt/omnidoer")
+
+    def test_omnidoer_heartbeat_read_tools_are_safe_and_public(self):
+        capabilities.settings = types.SimpleNamespace(skill_roots=[], vault_metadata_command="", help_commands=[])
+        with tempfile.TemporaryDirectory() as tmp:
+            script = self.write_fake_omnidoer(Path(tmp))
+            runner.settings = self.fake_omnidoer_settings(script)
+
+            status = registry.run({"tool": "omnidoer_heartbeat_status", "args": {}}, tmp, "safe")
+            tasks = registry.run({"tool": "omnidoer_heartbeat_tasks", "args": {}}, tmp, "safe")
+            search = registry.run({"tool": "capability_search", "args": {"query": "heartbeat scheduler", "limit": 8}}, tmp, "safe")
+
+        self.assertTrue(json.loads(status.stdout)["enabled"])
+        self.assertEqual(json.loads(tasks.stdout)[0]["task_id"], "hbt_test")
+        self.assertNotIn("must-not-appear", tasks.stdout)
+        search_payload = json.loads(search.stdout)
+        self.assertIn(("tool", "omnidoer_heartbeat_status"), {(item["type"], item["id"]) for item in search_payload["results"]})
+
+    def test_omnidoer_heartbeat_management_tools_are_yolo_only(self):
+        commands = [
+            {
+                "tool": "omnidoer_heartbeat_add_task",
+                "args": {
+                    "task": "check repo\napi_token=must-not-appear",
+                    "title": "Queue health",
+                    "weight": 2,
+                    "position": "back",
+                    "priority": "high",
+                    "quota": "daily",
+                    "repo_path": "/opt/handex",
+                    "remote_url": "https://github.com/OmniDoer/Handex",
+                    "target": "tests",
+                    "deadline_utc": "2026-07-01T00:00:00Z",
+                    "min_interval": "4h",
+                    "no_interrupt_active": True,
+                },
+            },
+            {"tool": "omnidoer_heartbeat_remove_task", "args": {"task_id": "hbt_test"}},
+            {"tool": "omnidoer_heartbeat_enable", "args": {"interval": "1h", "min_idle": "5m", "file": "/opt/handex/HEARTBEAT.md", "session_id": "default"}},
+            {"tool": "omnidoer_heartbeat_disable", "args": {"session_id": "default"}},
+            {"tool": "omnidoer_heartbeat_run_once", "args": {"force": True}},
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            script = self.write_fake_omnidoer(Path(tmp))
+            runner.settings = self.fake_omnidoer_settings(script)
+
+            for command in commands:
+                with self.assertRaises(ToolError):
+                    registry.run(command, tmp, "safe")
+
+            add_preview = registry.preview(commands[0], tmp, "yolo")
+            added = registry.run(commands[0], tmp, "yolo")
+            removed = registry.run(commands[1], tmp, "yolo")
+            enabled = registry.run(commands[2], tmp, "yolo")
+            disabled = registry.run(commands[3], tmp, "yolo")
+            run_once = registry.run(commands[4], tmp, "yolo")
+
+        added_payload = json.loads(added.stdout)
+        self.assertEqual(added_payload["task_id"], "hbt_added")
+        self.assertEqual(added_payload["weight"], 2)
+        self.assertEqual(added_payload["position"], "back")
+        self.assertFalse(added_payload["interrupt_active"])
+        self.assertNotIn("must-not-appear", added.stdout)
+        self.assertNotIn("must-not-appear", add_preview.final_command)
+        self.assertNotIn("must-not-appear", added.final_command)
+        self.assertEqual(json.loads(removed.stdout)["task_id"], "hbt_test")
+        enabled_payload = json.loads(enabled.stdout)
+        self.assertEqual(enabled_payload["interval"], "1h")
+        self.assertEqual(enabled_payload["min_idle"], "5m")
+        self.assertEqual(enabled_payload["session_id"], "default")
+        self.assertFalse(json.loads(disabled.stdout)["enabled"])
+        self.assertTrue(json.loads(run_once.stdout)["forced"])
+
+    def test_omnidoer_heartbeat_validates_ids_and_public_urls(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            script = self.write_fake_omnidoer(Path(tmp))
+            runner.settings = self.fake_omnidoer_settings(script)
+
+            with self.assertRaises(ToolError):
+                registry.run({"tool": "omnidoer_heartbeat_remove_task", "args": {"task_id": "task_bad"}}, tmp, "yolo")
+            with self.assertRaises(ToolError):
+                registry.run({"tool": "omnidoer_heartbeat_add_task", "args": {"task": "x", "remote_url": "https://user:pass@example.com/repo"}}, tmp, "yolo")
 
     def test_omnidoer_control_management_tools_are_yolo_only(self):
         commands = [
