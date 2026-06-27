@@ -482,8 +482,13 @@ Handex skills are dynamic instruction files. A skill is any directory containing
 Configure roots with:
 
 ```sh
-HANDEX_SKILL_ROOTS=/opt/handex/skills:/some/other/skills
+HANDEX_SKILL_ROOTS=/opt/handex/skills:/root/.codex/skills:/root/.codex/plugins/cache
 ```
+
+The `/root/.codex/skills` root lets Handex read installed Codex skills. The
+`/root/.codex/plugins/cache` root lets Handex discover plugin-contributed
+skills such as the GitHub plugin skills. Missing roots are ignored, so the same
+configuration works on hosts where Codex has not installed those directories.
 
 The built-in skill tools are:
 
@@ -664,9 +669,10 @@ HANDEX_HELP_COMMANDS='codex=codex --help;;omnidoer=omnidoer --help'
 ```
 
 The `capability_report` tool reports configured skill roots, plugin roots,
-whether a vault metadata provider exists, and the help output from those
-commands. The `capability_search` tool searches those same capability sources
-plus built-in tool descriptions, skills, plugins, and vault credential metadata:
+whether roots and vault files exist, local/OmniDoer vault readiness, and the
+help output from configured commands. The `capability_search` tool searches
+those same capability sources plus built-in tool descriptions, skills,
+plugins, and vault credential metadata:
 
 ```json
 {"tool":"capability_search","args":{"query":"github release","limit":8},"mode":"safe","reason":"find the relevant Handex capability"}
@@ -878,7 +884,7 @@ The installer creates `/etc/handex/handex.env` with a generated
 Important runtime configuration:
 
 ```sh
-HANDEX_SKILL_ROOTS=/opt/handex/skills
+HANDEX_SKILL_ROOTS=/opt/handex/skills:/root/.codex/skills:/root/.codex/plugins/cache
 HANDEX_VAULT_KEY=<generated-fernet-key>
 HANDEX_MAX_UPLOAD_BYTES=26214400
 HANDEX_VAULT_METADATA_COMMAND=

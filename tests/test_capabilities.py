@@ -159,6 +159,57 @@ class CapabilityTests(unittest.TestCase):
             self.assertEqual(release_payload["errors"], [])
             self.assertNotIn("must-not-appear", json.dumps(release_payload))
 
+    def test_capability_report_includes_runtime_readiness(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            skill_root = root / "skills"
+            plugin_root = root / "plugins"
+            skill_dir = skill_root / "release-manager"
+            plugin_dir = plugin_root / "release-plugin"
+            vault_path = root / "vault.json"
+            passphrase_file = root / "vault-passphrase"
+            skill_dir.mkdir(parents=True)
+            plugin_dir.mkdir(parents=True)
+            vault_path.write_text("{}", encoding="utf-8")
+            passphrase_file.write_text("passphrase", encoding="utf-8")
+            (skill_dir / "SKILL.md").write_text("# Release Manager\n\nShip releases.\n", encoding="utf-8")
+            (plugin_dir / "plugin.json").write_text(
+                json.dumps(
+                    {
+                        "id": "release-plugin",
+                        "name": "Release Plugin",
+                        "description": "Publish release metadata.",
+                        "command": [sys.executable, "-c", "print('ok')"],
+                        "safe": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            capabilities.settings = types.SimpleNamespace(
+                skill_roots=[skill_root],
+                plugin_roots=[plugin_root],
+                vault_metadata_command="",
+                help_commands=[],
+                vault_key="configured",
+                omnidoer_bin=sys.executable,
+                omnidoer_vault_path=str(vault_path),
+                omnidoer_vault_passphrase_file=str(passphrase_file),
+                omnidoer_git_origin="https://github.com",
+                omnidoer_github_api_origin="https://api.github.com",
+            )
+            plugins.settings = types.SimpleNamespace(plugin_roots=[plugin_root])
+
+            report = capabilities.configured_capability_report()
+
+            self.assertIn("- configured skills found: 1", report)
+            self.assertIn("- configured plugins found: 1", report)
+            self.assertIn(f"- {skill_root} (exists, 1 skill(s))", report)
+            self.assertIn(f"- {plugin_root} (exists, 1 plugin(s))", report)
+            self.assertIn("- local Handex vault key: configured", report)
+            self.assertIn(f"- binary: {sys.executable} (found)", report)
+            self.assertIn(f"- vault: {vault_path} (exists)", report)
+            self.assertIn("- passphrase file: configured (exists)", report)
+
 
 if __name__ == "__main__":
     unittest.main()

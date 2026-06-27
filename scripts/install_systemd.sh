@@ -11,7 +11,7 @@ if [[ ! -f /etc/handex/handex.env ]]; then
     printf 'HANDEX_DATA_DIR=/opt/handex/data\n'
     printf 'HANDEX_PROJECTS_DIR=/opt/handex/projects\n'
     printf 'HANDEX_LOGS_DIR=/opt/handex/logs\n'
-    printf 'HANDEX_SKILL_ROOTS=/opt/handex/skills\n'
+    printf 'HANDEX_SKILL_ROOTS=/opt/handex/skills:/root/.codex/skills:/root/.codex/plugins/cache\n'
     printf 'HANDEX_PLUGIN_ROOTS=/opt/handex/plugins\n'
     printf 'HANDEX_MAX_UPLOAD_BYTES=26214400\n'
     printf 'HANDEX_VAULT_METADATA_COMMAND=\n'

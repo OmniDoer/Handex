@@ -4,6 +4,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -448,34 +449,65 @@ def search_capabilities(query: str, limit: int = 12) -> dict[str, Any]:
     }
 
 
+def _path_readiness(path_value: str | Path) -> str:
+    path = Path(path_value).expanduser()
+    return "exists" if path.exists() else "missing"
+
+
 def configured_capability_report() -> str:
     sections = ["# Handex Capability Report", ""]
+    skills = list_skills()
+    plugin_error = ""
+    try:
+        from .plugins import list_plugins
+
+        plugins = list_plugins()
+    except Exception as exc:
+        plugins = []
+        plugin_error = f"{type(exc).__name__}: {exc}"
+
+    sections.append("## Runtime Readiness")
+    sections.append(f"- built-in tools: {len(BUILTIN_TOOL_CATALOG)}")
+    sections.append(f"- configured skills found: {len(skills)}")
+    sections.append(f"- configured plugins found: {len(plugins)}")
+    sections.append(f"- local Handex vault key: {'configured' if getattr(settings, 'vault_key', '') else 'not configured'}")
+    sections.append(f"- external vault metadata provider: {'configured' if settings.vault_metadata_command else 'not configured'}")
+    sections.append("")
     sections.append("## Skill Roots")
     if settings.skill_roots:
-        sections.extend(f"- {root}" for root in settings.skill_roots)
+        for root in settings.skill_roots:
+            skill_count = sum(1 for skill in skills if skill.root == str(root))
+            sections.append(f"- {root} ({_path_readiness(root)}, {skill_count} skill(s))")
     else:
         sections.append("- none")
     sections.append("")
     sections.append("## Plugin Roots")
     plugin_roots = getattr(settings, "plugin_roots", [])
     if plugin_roots:
-        sections.extend(f"- {root}" for root in plugin_roots)
+        for root in plugin_roots:
+            plugin_count = sum(1 for plugin in plugins if plugin.root == str(root))
+            sections.append(f"- {root} ({_path_readiness(root)}, {plugin_count} plugin(s))")
     else:
         sections.append("- none")
+    if plugin_error:
+        sections.append(f"- plugin scan error: {plugin_error}")
     sections.append("")
     sections.append("## Vault Metadata Provider")
     sections.append("- configured" if settings.vault_metadata_command else "- not configured")
     sections.append("")
     sections.append("## OmniDoer Vault Bridge")
+    omnidoer_bin = getattr(settings, "omnidoer_bin", "") or "omnidoer"
+    omnidoer_bin_status = "found" if shutil.which(omnidoer_bin) else "not found"
+    sections.append(f"- binary: {omnidoer_bin} ({omnidoer_bin_status})")
     omnidoer_vault_path = getattr(settings, "omnidoer_vault_path", "")
     omnidoer_vault_passphrase_file = getattr(settings, "omnidoer_vault_passphrase_file", "")
     if omnidoer_vault_path and omnidoer_vault_passphrase_file:
-        sections.append(f"- vault: {omnidoer_vault_path}")
-        sections.append("- passphrase file: configured")
+        sections.append(f"- vault: {omnidoer_vault_path} ({_path_readiness(omnidoer_vault_path)})")
+        sections.append(f"- passphrase file: configured ({_path_readiness(omnidoer_vault_passphrase_file)})")
         sections.append(f"- git origin: {getattr(settings, 'omnidoer_git_origin', 'https://github.com')}")
         sections.append(f"- github api origin: {getattr(settings, 'omnidoer_github_api_origin', 'https://api.github.com')}")
     else:
-        sections.append("- not configured")
+        sections.append("- vault/passphrase file: not configured")
     sections.append("")
     sections.append("## Extra Help Commands")
     if not settings.help_commands:
