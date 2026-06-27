@@ -72,6 +72,8 @@ SAFE_BATCH_TOOLS = {
     "job_status",
     "omnidoer_request_status",
     "omnidoer_task_list",
+    "omnidoer_chat_messages",
+    "omnidoer_chat_next",
     "plugin_list",
 }
 SAFE_BATCH_GIT_COMMANDS = {"status", "log", "show", "diff", "rev-parse", "ls-files", "grep", "describe", "blame"}
@@ -337,6 +339,29 @@ def preview_command(command: dict[str, Any]) -> str:
         return f"omnidoer control complete-task {args.get('task_id') or args.get('id') or ''}"
     if tool == "omnidoer_task_cancel":
         return f"omnidoer control cancel-task {args.get('task_id') or args.get('id') or ''}"
+    if tool == "omnidoer_chat_messages":
+        return f"omnidoer control chat-messages {args.get('message_id') or args.get('id') or args.get('role') or ''}"
+    if tool == "omnidoer_chat_next":
+        return "omnidoer control chat-next --no-claim"
+    if tool == "omnidoer_chat_send":
+        message = str(args.get("message") or args.get("text") or "")
+        return f"omnidoer control chat-send {shlex.quote(redact_context_text(message)[:80])}"
+    if tool == "omnidoer_chat_reply":
+        message = str(args.get("message") or args.get("text") or "")
+        return f"omnidoer control chat-reply {args.get('reply_to') or args.get('reply_to_message_id') or ''} {shlex.quote(redact_context_text(message)[:80])}"
+    if tool == "omnidoer_chat_log_user":
+        message = str(args.get("message") or args.get("text") or "")
+        return f"omnidoer control chat-log-user {shlex.quote(redact_context_text(message)[:80])}"
+    if tool == "omnidoer_chat_start":
+        return f"omnidoer control chat-start {args.get('reply_to') or args.get('reply_to_message_id') or args.get('source') or ''}"
+    if tool == "omnidoer_chat_delta":
+        delta = str(args.get("delta") or args.get("text") or "")
+        return f"omnidoer control chat-delta {args.get('message_id') or args.get('id') or ''} {shlex.quote(redact_context_text(delta)[:80])}"
+    if tool == "omnidoer_chat_complete":
+        return f"omnidoer control chat-complete {args.get('message_id') or args.get('id') or ''}"
+    if tool == "omnidoer_chat_record":
+        text = str(args.get("text") or args.get("message") or "")
+        return f"omnidoer control chat-record {args.get('record_type') or args.get('type') or ''} {shlex.quote(redact_context_text(text)[:80])}"
     if tool == "git_bootstrap":
         return f"git clone {redacted_repo_url(str(args.get('repo_url') or args.get('url') or ''))}"
     if tool == "apply_patch":
@@ -391,6 +416,7 @@ def subprocess_result(
     redact_values: list[str] | None = None,
     input_text: str | None = None,
     inherit_env: bool = True,
+    clamp_result: bool = True,
 ) -> ToolResult:
     env = None
     if extra_env is not None:
@@ -411,6 +437,11 @@ def subprocess_result(
             executable="/bin/bash" if shell else None,
             env=env,
         )
+        stdout = redact_text(completed.stdout or "", redact_values or [])
+        stderr = redact_text(completed.stderr or "", redact_values or [])
+        if clamp_result:
+            stdout = clamp_output(stdout)
+            stderr = clamp_output(stderr)
         return ToolResult(
             tool=tool,
             command=command,
@@ -418,12 +449,17 @@ def subprocess_result(
             cwd=str(cwd),
             final_command=final_command,
             exit_code=int(completed.returncode),
-            stdout=clamp_output(redact_text(completed.stdout or "", redact_values or [])),
-            stderr=clamp_output(redact_text(completed.stderr or "", redact_values or [])),
+            stdout=stdout,
+            stderr=stderr,
         )
     except subprocess.TimeoutExpired as exc:
         stdout = exc.stdout if isinstance(exc.stdout, str) else (exc.stdout or b"").decode(errors="replace")
         stderr = exc.stderr if isinstance(exc.stderr, str) else (exc.stderr or b"").decode(errors="replace")
+        stdout = redact_text(stdout, redact_values or [])
+        stderr = redact_text((stderr or "") + "\nHandex timeout expired.", redact_values or [])
+        if clamp_result:
+            stdout = clamp_output(stdout)
+            stderr = clamp_output(stderr)
         return ToolResult(
             tool=tool,
             command=command,
@@ -431,8 +467,8 @@ def subprocess_result(
             cwd=str(cwd),
             final_command=final_command,
             exit_code=124,
-            stdout=clamp_output(redact_text(stdout, redact_values or [])),
-            stderr=clamp_output(redact_text((stderr or "") + "\nHandex timeout expired.", redact_values or [])),
+            stdout=stdout,
+            stderr=stderr,
         )
 
 
@@ -548,9 +584,10 @@ def run_omnidoer_subprocess(
     mode: str,
     cwd: Path,
     argv: list[str],
+    clamp_result: bool = True,
 ) -> ToolResult:
     final_command = " ".join(shlex.quote(item) for item in argv)
-    return subprocess_result(command=command, tool=tool, mode=mode, cwd=cwd, final_command=final_command, argv=argv, extra_env={}, inherit_env=False)
+    return subprocess_result(command=command, tool=tool, mode=mode, cwd=cwd, final_command=final_command, argv=argv, extra_env={}, inherit_env=False, clamp_result=clamp_result)
 
 
 def parse_public_json_or_kv(text: str) -> Any:
@@ -600,6 +637,55 @@ def find_task_id(value: Any) -> str:
         if match:
             return match.group(0)
     return ""
+
+
+def message_id_arg(args: dict[str, Any], tool: str) -> str:
+    message_id = str(args.get("message_id") or args.get("id") or "")
+    if not message_id:
+        raise ToolError(f"{tool} args.message_id is required")
+    if not re.fullmatch(r"msg_[A-Za-z0-9_:-]+", message_id):
+        raise ToolError(f"{tool} args.message_id must look like msg_<id>")
+    return message_id
+
+
+def optional_message_id(args: dict[str, Any], *names: str) -> str:
+    for name in names:
+        value = str(args.get(name) or "")
+        if value:
+            if not re.fullmatch(r"msg_[A-Za-z0-9_:-]+", value):
+                raise ToolError(f"{name} must look like msg_<id>")
+            return value
+    return ""
+
+
+def find_message_id(value: Any) -> str:
+    if isinstance(value, dict):
+        direct = str(value.get("message_id") or value.get("id") or "")
+        if re.fullmatch(r"msg_[A-Za-z0-9_:-]+", direct):
+            return direct
+        for item in value.values():
+            found = find_message_id(item)
+            if found:
+                return found
+    elif isinstance(value, list):
+        for item in value:
+            found = find_message_id(item)
+            if found:
+                return found
+    elif isinstance(value, str):
+        match = re.search(r"\bmsg_[A-Za-z0-9_:-]+\b", value)
+        if match:
+            return match.group(0)
+    return ""
+
+
+def plain_token_arg(args: dict[str, Any], key: str, tool: str, *, required: bool = False) -> str:
+    value = str(args.get(key) or "")
+    if required and not value:
+        raise ToolError(f"{tool} args.{key} is required")
+    if value and not re.fullmatch(r"[A-Za-z0-9_.:-]+", value):
+        raise ToolError(f"{tool} args.{key} must contain only letters, numbers, dot, underscore, colon, or dash")
+    return value
 
 
 def public_payload(value: Any) -> Any:
@@ -798,6 +884,203 @@ def run_omnidoer_task_cancel(command: dict[str, Any], workspace: Path, mode: str
         payload.setdefault("status", "cancelled")
     output = public_json(payload)
     return ToolResult("omnidoer_task_cancel", command, mode, result.cwd, result.final_command, result.exit_code, output + "\n", result.stderr)
+
+
+def run_omnidoer_chat_messages(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    cwd = resolve_cwd(command, workspace, mode)
+    args = command_args(command)
+    message_id = str(args.get("message_id") or args.get("id") or "")
+    role_filter = str(args.get("role") or "").strip().lower()
+    source_filter = str(args.get("source") or "").strip()
+    status_filter = str(args.get("status") or "").strip().lower()
+    result = run_omnidoer_subprocess(command, tool="omnidoer_chat_messages", mode=mode, cwd=cwd, argv=[*omnidoer_base_argv(), "control", "chat-messages"], clamp_result=False)
+    payload = parse_public_json_or_kv(result.stdout)
+    if message_id:
+        if not re.fullmatch(r"msg_[A-Za-z0-9_:-]+", message_id):
+            raise ToolError("omnidoer_chat_messages args.message_id must look like msg_<id>")
+        if isinstance(payload, list):
+            matches = [item for item in payload if isinstance(item, dict) and item.get("message_id") == message_id]
+            payload = matches[0] if matches else {"status": "not_found", "message_id": message_id}
+    if isinstance(payload, list):
+        if role_filter:
+            payload = [item for item in payload if isinstance(item, dict) and str(item.get("role") or "").lower() == role_filter]
+        if source_filter:
+            payload = [item for item in payload if isinstance(item, dict) and str(item.get("source") or "") == source_filter]
+        if status_filter:
+            payload = [item for item in payload if isinstance(item, dict) and str(item.get("status") or "").lower() == status_filter]
+        try:
+            limit = int(args.get("limit") or 20)
+        except (TypeError, ValueError):
+            limit = 20
+        limit = max(1, min(limit, 200))
+        payload = payload[-limit:]
+    output = public_json(payload)
+    return ToolResult("omnidoer_chat_messages", command, mode, result.cwd, result.final_command, result.exit_code, output + "\n", result.stderr)
+
+
+def run_omnidoer_chat_next(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    cwd = resolve_cwd(command, workspace, mode)
+    args = command_args(command)
+    argv = [*omnidoer_base_argv(), "control", "chat-next"]
+    claim = bool(args.get("claim"))
+    if mode == "safe" and claim:
+        raise ToolError("Safe Mode omnidoer_chat_next does not claim messages. Use YOLO Mode after review to claim.")
+    if not claim or bool(args.get("no_claim")) or mode == "safe":
+        argv.append("--no-claim")
+    result = run_omnidoer_subprocess(command, tool="omnidoer_chat_next", mode=mode, cwd=cwd, argv=argv)
+    payload = parse_public_json_or_kv(result.stdout)
+    output = public_json(payload)
+    return ToolResult("omnidoer_chat_next", command, mode, result.cwd, result.final_command, result.exit_code, output + "\n", result.stderr)
+
+
+def run_omnidoer_chat_send(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    cwd = resolve_cwd(command, workspace, mode)
+    args = command_args(command)
+    message = str(args.get("message") or args.get("text") or "")
+    if not message.strip():
+        raise ToolError("omnidoer_chat_send args.message is required")
+    result = run_omnidoer_subprocess(command, tool="omnidoer_chat_send", mode=mode, cwd=cwd, argv=[*omnidoer_base_argv(), "control", "chat-send", message])
+    payload = parse_public_json_or_kv(result.stdout)
+    if not isinstance(payload, dict):
+        payload = {"result": payload}
+    message_id = find_message_id(payload)
+    if message_id:
+        payload.setdefault("message_id", message_id)
+    if result.exit_code == 0:
+        payload.setdefault("next_tools", ["omnidoer_chat_messages", "omnidoer_chat_reply"])
+    output = public_json(payload)
+    return ToolResult("omnidoer_chat_send", command, mode, result.cwd, redact_command_string(result.final_command), result.exit_code, output + "\n", result.stderr)
+
+
+def run_omnidoer_chat_reply(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    cwd = resolve_cwd(command, workspace, mode)
+    args = command_args(command)
+    message = str(args.get("message") or args.get("text") or "")
+    if not message.strip():
+        raise ToolError("omnidoer_chat_reply args.message is required")
+    argv = [*omnidoer_base_argv(), "control", "chat-reply"]
+    reply_to = optional_message_id(args, "reply_to", "reply_to_message_id")
+    if reply_to:
+        argv.extend(["--reply-to", reply_to])
+    argv.append(message)
+    result = run_omnidoer_subprocess(command, tool="omnidoer_chat_reply", mode=mode, cwd=cwd, argv=argv)
+    payload = parse_public_json_or_kv(result.stdout)
+    if not isinstance(payload, dict):
+        payload = {"result": payload}
+    message_id = find_message_id(payload)
+    if message_id:
+        payload.setdefault("message_id", message_id)
+    output = public_json(payload)
+    return ToolResult("omnidoer_chat_reply", command, mode, result.cwd, redact_command_string(result.final_command), result.exit_code, output + "\n", result.stderr)
+
+
+def run_omnidoer_chat_log_user(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    cwd = resolve_cwd(command, workspace, mode)
+    args = command_args(command)
+    message = str(args.get("message") or args.get("text") or "")
+    if not message.strip():
+        raise ToolError("omnidoer_chat_log_user args.message is required")
+    argv = [*omnidoer_base_argv(), "control", "chat-log-user"]
+    source = plain_token_arg(args, "source", "omnidoer_chat_log_user")
+    if source:
+        argv.extend(["--source", source])
+    argv.append(message)
+    result = run_omnidoer_subprocess(command, tool="omnidoer_chat_log_user", mode=mode, cwd=cwd, argv=argv)
+    payload = parse_public_json_or_kv(result.stdout)
+    if not isinstance(payload, dict):
+        payload = {"result": payload}
+    message_id = find_message_id(payload)
+    if message_id:
+        payload.setdefault("message_id", message_id)
+    output = public_json(payload)
+    return ToolResult("omnidoer_chat_log_user", command, mode, result.cwd, redact_command_string(result.final_command), result.exit_code, output + "\n", result.stderr)
+
+
+def run_omnidoer_chat_start(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    cwd = resolve_cwd(command, workspace, mode)
+    args = command_args(command)
+    argv = [*omnidoer_base_argv(), "control", "chat-start"]
+    reply_to = optional_message_id(args, "reply_to", "reply_to_message_id")
+    if reply_to:
+        argv.extend(["--reply-to", reply_to])
+    source = plain_token_arg(args, "source", "omnidoer_chat_start")
+    if source:
+        argv.extend(["--source", source])
+    result = run_omnidoer_subprocess(command, tool="omnidoer_chat_start", mode=mode, cwd=cwd, argv=argv)
+    payload = parse_public_json_or_kv(result.stdout)
+    if not isinstance(payload, dict):
+        payload = {"result": payload}
+    message_id = find_message_id(payload)
+    if message_id:
+        payload.setdefault("message_id", message_id)
+    if result.exit_code == 0:
+        payload.setdefault("next_tools", ["omnidoer_chat_delta", "omnidoer_chat_complete"])
+    output = public_json(payload)
+    return ToolResult("omnidoer_chat_start", command, mode, result.cwd, result.final_command, result.exit_code, output + "\n", result.stderr)
+
+
+def run_omnidoer_chat_delta(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    cwd = resolve_cwd(command, workspace, mode)
+    args = command_args(command)
+    message_id = message_id_arg(args, "omnidoer_chat_delta")
+    delta = str(args.get("delta") or args.get("text") or "")
+    if not delta:
+        raise ToolError("omnidoer_chat_delta args.delta is required")
+    result = run_omnidoer_subprocess(command, tool="omnidoer_chat_delta", mode=mode, cwd=cwd, argv=[*omnidoer_base_argv(), "control", "chat-delta", message_id, delta])
+    payload = parse_public_json_or_kv(result.stdout)
+    if not isinstance(payload, dict):
+        payload = {"result": payload}
+    payload.setdefault("message_id", message_id)
+    output = public_json(payload)
+    return ToolResult("omnidoer_chat_delta", command, mode, result.cwd, redact_command_string(result.final_command), result.exit_code, output + "\n", result.stderr)
+
+
+def run_omnidoer_chat_complete(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    cwd = resolve_cwd(command, workspace, mode)
+    args = command_args(command)
+    message_id = message_id_arg(args, "omnidoer_chat_complete")
+    argv = [*omnidoer_base_argv(), "control", "chat-complete"]
+    text = str(args.get("text") or "")
+    if text:
+        argv.extend(["--text", text])
+    argv.append(message_id)
+    result = run_omnidoer_subprocess(command, tool="omnidoer_chat_complete", mode=mode, cwd=cwd, argv=argv)
+    payload = parse_public_json_or_kv(result.stdout)
+    if not isinstance(payload, dict):
+        payload = {"result": payload}
+    payload.setdefault("message_id", message_id)
+    if result.exit_code == 0:
+        payload.setdefault("status", "completed")
+    output = public_json(payload)
+    return ToolResult("omnidoer_chat_complete", command, mode, result.cwd, redact_command_string(result.final_command), result.exit_code, output + "\n", result.stderr)
+
+
+def run_omnidoer_chat_record(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    cwd = resolve_cwd(command, workspace, mode)
+    args = command_args(command)
+    record_type = plain_token_arg(args, "record_type", "omnidoer_chat_record")
+    if not record_type:
+        record_type = plain_token_arg(args, "type", "omnidoer_chat_record", required=True)
+    text = str(args.get("text") or args.get("message") or "")
+    if not text.strip():
+        raise ToolError("omnidoer_chat_record args.text is required")
+    argv = [*omnidoer_base_argv(), "control", "chat-record"]
+    role = plain_token_arg(args, "role", "omnidoer_chat_record")
+    if role:
+        argv.extend(["--role", role])
+    message_id = optional_message_id(args, "message_id", "id")
+    if message_id:
+        argv.extend(["--message-id", message_id])
+    argv.extend([record_type, text])
+    result = run_omnidoer_subprocess(command, tool="omnidoer_chat_record", mode=mode, cwd=cwd, argv=argv)
+    payload = parse_public_json_or_kv(result.stdout)
+    if not isinstance(payload, dict):
+        payload = {"result": payload}
+    message_id = find_message_id(payload) or message_id
+    if message_id:
+        payload.setdefault("message_id", message_id)
+    output = public_json(payload)
+    return ToolResult("omnidoer_chat_record", command, mode, result.cwd, redact_command_string(result.final_command), result.exit_code, output + "\n", result.stderr)
 
 
 def run_omnidoer_git(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
@@ -1758,6 +2041,15 @@ registry.register("omnidoer_task_submit", run_omnidoer_task_submit)
 registry.register("omnidoer_task_list", run_omnidoer_task_list)
 registry.register("omnidoer_task_complete", run_omnidoer_task_complete)
 registry.register("omnidoer_task_cancel", run_omnidoer_task_cancel)
+registry.register("omnidoer_chat_messages", run_omnidoer_chat_messages)
+registry.register("omnidoer_chat_next", run_omnidoer_chat_next)
+registry.register("omnidoer_chat_send", run_omnidoer_chat_send)
+registry.register("omnidoer_chat_reply", run_omnidoer_chat_reply)
+registry.register("omnidoer_chat_log_user", run_omnidoer_chat_log_user)
+registry.register("omnidoer_chat_start", run_omnidoer_chat_start)
+registry.register("omnidoer_chat_delta", run_omnidoer_chat_delta)
+registry.register("omnidoer_chat_complete", run_omnidoer_chat_complete)
+registry.register("omnidoer_chat_record", run_omnidoer_chat_record)
 registry.register("omnidoer_git", run_omnidoer_git)
 registry.register("omnidoer_github_api", run_omnidoer_github_api)
 registry.register("git_bootstrap", run_git_bootstrap)

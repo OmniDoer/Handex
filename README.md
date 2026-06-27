@@ -108,6 +108,15 @@ Built-in tools:
 - `omnidoer_task_list`
 - `omnidoer_task_complete`
 - `omnidoer_task_cancel`
+- `omnidoer_chat_messages`
+- `omnidoer_chat_next`
+- `omnidoer_chat_send`
+- `omnidoer_chat_reply`
+- `omnidoer_chat_log_user`
+- `omnidoer_chat_start`
+- `omnidoer_chat_delta`
+- `omnidoer_chat_complete`
+- `omnidoer_chat_record`
 - `capability_report`
 - `capability_search`
 - `context_pack`
@@ -230,6 +239,13 @@ for reviewed coordination with a paired client, for example handing off a
 manual check or inspecting phone-submitted task state. Task text is not a secret
 transport; credentials should use the credential request tools instead.
 
+`omnidoer_chat_messages`, `omnidoer_chat_next`, `omnidoer_chat_send`,
+`omnidoer_chat_reply`, `omnidoer_chat_log_user`, `omnidoer_chat_start`,
+`omnidoer_chat_delta`, `omnidoer_chat_complete`, and `omnidoer_chat_record`
+bridge OmniDoer's Control Client chat/transcript commands. Safe Mode peeks at
+the next message with `--no-claim`; claiming a message requires YOLO Mode after
+review. Chat text is treated as public coordination text, not a secret channel.
+
 `plugin_list` and `plugin_run` expose configured command plugins from
 `HANDEX_PLUGIN_ROOTS`. A plugin is a directory containing `plugin.json`; it
 declares a command argv, description, timeout, and whether it is allowed in
@@ -274,6 +290,8 @@ LLM how to behave like a coding agent inside the Hand Loop:
   pasting secrets into chat
 - submit, list, complete, or cancel paired OmniDoer Control Client tasks for
   reviewed human/device coordination
+- inspect and reply through the paired OmniDoer Control Client chat stream,
+  including streaming response records
 - run reviewed Git/GitHub operations with existing OmniDoer vault credentials
   through `omnidoer_git` and `omnidoer_github_api`
 - keep summaries durable between web LLM sessions
@@ -457,6 +475,17 @@ The related tools are:
   by `task_id`, `status`, or `limit`
 - `omnidoer_task_complete`: mark a reviewed task as completed
 - `omnidoer_task_cancel`: cancel a no-longer-needed task
+- `omnidoer_chat_messages`: list or filter public chat transcript metadata
+- `omnidoer_chat_next`: inspect the next chat message; Safe Mode always uses
+  `--no-claim`
+- `omnidoer_chat_send`: send reviewed chat text through OmniDoer
+- `omnidoer_chat_reply`: reply to a specific message when `reply_to` is set
+- `omnidoer_chat_log_user`: record a reviewed user message in chat history
+- `omnidoer_chat_start`: create a streaming assistant message
+- `omnidoer_chat_delta`: append text to a streaming assistant message
+- `omnidoer_chat_complete`: complete a streaming assistant message
+- `omnidoer_chat_record`: record a typed chat event for audit or transcript
+  continuity
 - `omnidoer_git`: run `omnidoer git run` with the configured vault bridge
 - `omnidoer_github_api`: run `omnidoer github api` with the configured vault
   bridge
@@ -473,6 +502,10 @@ password, TOTP seed, or encrypted response body.
 Control Client tasks are also treated as public coordination text. Handex
 redacts secret-looking task fields in Tool Results, but users and LLMs should
 not put passwords, tokens, private keys, or TOTP seeds into task text.
+
+Control Client chat messages follow the same boundary. Handex redacts
+secret-looking fields and lines in Tool Results and command previews, but chat
+history can be read by paired clients and should not contain credentials.
 
 ## Capability Report
 

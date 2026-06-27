@@ -87,6 +87,55 @@ class RunnerTests(unittest.TestCase):
                     print(f"completed {argv[2]}")
                 elif argv[:2] == ["control", "cancel-task"]:
                     print(f"cancelled {argv[2]}")
+                elif argv[:2] == ["control", "chat-messages"]:
+                    print(json.dumps([
+                        {
+                            "message_id": "msg_user",
+                            "role": "user",
+                            "source": "control_client",
+                            "status": "pending",
+                            "text": "please check this\\napi_token=must-not-appear",
+                            "secret_fields_allowed": False,
+                        },
+                        {
+                            "message_id": "msg_assistant",
+                            "role": "assistant",
+                            "source": "handex",
+                            "status": "completed",
+                            "text": "done",
+                        },
+                    ]))
+                elif argv[:2] == ["control", "chat-next"]:
+                    print(json.dumps({
+                        "message_id": "msg_user",
+                        "role": "user",
+                        "status": "pending",
+                        "no_claim": "--no-claim" in argv,
+                        "text": "next message\\npassword=must-not-appear",
+                    }))
+                elif argv[:2] == ["control", "chat-send"]:
+                    print("queued chat message msg_sent")
+                elif argv[:2] == ["control", "chat-reply"]:
+                    print(json.dumps({
+                        "message_id": "msg_reply",
+                        "reply_to_message_id": argv[argv.index("--reply-to") + 1] if "--reply-to" in argv else None,
+                        "status": "completed",
+                    }))
+                elif argv[:2] == ["control", "chat-log-user"]:
+                    print("logged user message msg_logged")
+                elif argv[:2] == ["control", "chat-start"]:
+                    print("message_id=msg_stream")
+                    print("status=streaming")
+                elif argv[:2] == ["control", "chat-delta"]:
+                    print(json.dumps({"message_id": argv[2], "status": "streaming", "delta": argv[3]}))
+                elif argv[:2] == ["control", "chat-complete"]:
+                    print(json.dumps({"message_id": argv[-1], "status": "completed", "text": "password=must-not-appear"}))
+                elif argv[:2] == ["control", "chat-record"]:
+                    print(json.dumps({
+                        "message_id": argv[argv.index("--message-id") + 1] if "--message-id" in argv else "msg_record",
+                        "record_type": argv[-2],
+                        "text": argv[-1],
+                    }))
                 elif argv[:2] == ["control", "wait-request"]:
                     print("request_id=req_test")
                     print("request_completed=true")
@@ -319,6 +368,84 @@ class RunnerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaises(ToolError):
                 registry.run({"tool": "omnidoer_task_cancel", "args": {"task_id": "../bad"}}, tmp, "safe")
+
+    def test_omnidoer_chat_tools_wrap_control_chat_and_redact(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            script = self.write_fake_omnidoer(Path(tmp))
+            runner.settings = self.fake_omnidoer_settings(script)
+
+            messages = registry.run({"tool": "omnidoer_chat_messages", "args": {"role": "user", "limit": 1}}, tmp, "safe")
+            next_message = registry.run({"tool": "omnidoer_chat_next", "args": {}}, tmp, "safe")
+            sent = registry.run(
+                {"tool": "omnidoer_chat_send", "args": {"message": "hello\napi_token=must-not-appear"}},
+                tmp,
+                "safe",
+            )
+            reply = registry.run(
+                {
+                    "tool": "omnidoer_chat_reply",
+                    "args": {"reply_to": "msg_user", "message": "checked\npassword=must-not-appear"},
+                },
+                tmp,
+                "safe",
+            )
+            logged = registry.run({"tool": "omnidoer_chat_log_user", "args": {"source": "handex", "message": "user note"}}, tmp, "safe")
+            started = registry.run({"tool": "omnidoer_chat_start", "args": {"reply_to": "msg_user", "source": "handex"}}, tmp, "safe")
+            delta = registry.run({"tool": "omnidoer_chat_delta", "args": {"message_id": "msg_stream", "delta": "part\napi_token=must-not-appear"}}, tmp, "safe")
+            completed = registry.run({"tool": "omnidoer_chat_complete", "args": {"message_id": "msg_stream", "text": "final\npassword=must-not-appear"}}, tmp, "safe")
+            recorded = registry.run(
+                {
+                    "tool": "omnidoer_chat_record",
+                    "args": {"message_id": "msg_stream", "role": "assistant", "record_type": "note", "text": "audit note"},
+                },
+                tmp,
+                "safe",
+            )
+            preview = registry.preview(
+                {"tool": "omnidoer_chat_send", "args": {"message": "hello\napi_token=must-not-appear"}},
+                tmp,
+                "safe",
+            )
+
+        messages_payload = json.loads(messages.stdout)
+        next_payload = json.loads(next_message.stdout)
+        sent_payload = json.loads(sent.stdout)
+        reply_payload = json.loads(reply.stdout)
+        logged_payload = json.loads(logged.stdout)
+        started_payload = json.loads(started.stdout)
+        delta_payload = json.loads(delta.stdout)
+        completed_payload = json.loads(completed.stdout)
+        recorded_payload = json.loads(recorded.stdout)
+        self.assertEqual(messages_payload[0]["message_id"], "msg_user")
+        self.assertFalse(messages_payload[0]["secret_fields_allowed"])
+        self.assertNotIn("must-not-appear", messages.stdout)
+        self.assertEqual(next_payload["message_id"], "msg_user")
+        self.assertTrue(next_payload["no_claim"])
+        self.assertIn("--no-claim", next_message.final_command)
+        self.assertNotIn("must-not-appear", next_message.stdout)
+        self.assertEqual(sent_payload["message_id"], "msg_sent")
+        self.assertIn("omnidoer_chat_messages", sent_payload["next_tools"])
+        self.assertNotIn("must-not-appear", sent.final_command)
+        self.assertNotIn("must-not-appear", preview.final_command)
+        self.assertEqual(reply_payload["reply_to_message_id"], "msg_user")
+        self.assertEqual(logged_payload["message_id"], "msg_logged")
+        self.assertEqual(started_payload["message_id"], "msg_stream")
+        self.assertIn("omnidoer_chat_delta", started_payload["next_tools"])
+        self.assertEqual(delta_payload["message_id"], "msg_stream")
+        self.assertNotIn("must-not-appear", delta.stdout)
+        self.assertNotIn("must-not-appear", delta.final_command)
+        self.assertEqual(completed_payload["status"], "completed")
+        self.assertNotIn("must-not-appear", completed.stdout)
+        self.assertNotIn("must-not-appear", completed.final_command)
+        self.assertEqual(recorded_payload["message_id"], "msg_stream")
+        self.assertEqual(recorded_payload["record_type"], "note")
+
+    def test_omnidoer_chat_safe_next_blocks_claim_and_validates_ids(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ToolError):
+                registry.run({"tool": "omnidoer_chat_next", "args": {"claim": True}}, tmp, "safe")
+            with self.assertRaises(ToolError):
+                registry.run({"tool": "omnidoer_chat_delta", "args": {"message_id": "../bad", "delta": "x"}}, tmp, "safe")
 
     def test_omnidoer_git_safe_mode_blocks_mutating_subcommands(self):
         with tempfile.TemporaryDirectory() as tmp:

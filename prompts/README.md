@@ -74,6 +74,14 @@ OmniDoer Control Client task queues are exposed through
 client; task text is not a secret transport, and credentials should still use
 the credential request tools.
 
+OmniDoer Control Client chat/transcript flows are exposed through
+`omnidoer_chat_messages`, `omnidoer_chat_next`, `omnidoer_chat_send`,
+`omnidoer_chat_reply`, `omnidoer_chat_log_user`, `omnidoer_chat_start`,
+`omnidoer_chat_delta`, `omnidoer_chat_complete`, and `omnidoer_chat_record`.
+Safe Mode peeks at the next chat message with `--no-claim`; claiming requires
+YOLO Mode after review. Chat text is visible coordination, not a credential
+channel.
+
 Workspace uploads are exposed through the project page and the `list_uploads`
 tool. Uploaded files live under `.handex_uploads/` inside the workspace, and
 the Single-Step Agent Prompt includes a compact inventory so the LLM can ask
