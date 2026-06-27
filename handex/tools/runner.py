@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import difflib
 import fnmatch
 import json
 import os
@@ -59,6 +60,7 @@ class ToolPreview:
     cwd: str
     final_command: str
     warnings: list[str]
+    diff_preview: str = ""
 
 
 class ToolError(Exception):
@@ -90,7 +92,8 @@ class ToolRegistry:
         cwd = resolve_cwd(command, workspace_path, normalized_mode)
         final_command = preview_command(command)
         warnings = validate_preview(command, workspace_path, cwd, normalized_mode)
-        return ToolPreview(tool=tool, mode=normalized_mode, cwd=str(cwd), final_command=final_command, warnings=warnings)
+        diff_preview = preview_diff(command, workspace_path, cwd, normalized_mode)
+        return ToolPreview(tool=tool, mode=normalized_mode, cwd=str(cwd), final_command=final_command, warnings=warnings, diff_preview=diff_preview)
 
 
 def normalize_mode(mode: str) -> str:
@@ -172,6 +175,82 @@ def validate_preview(command: dict[str, Any], workspace: Path, cwd: Path, mode: 
     if tool == "shell" and mode == "safe":
         warnings.extend(validate_safe_shell(str(command_args(command).get("command") or command.get("command") or "")))
     return warnings
+
+
+def display_path(path: Path, workspace: Path) -> str:
+    try:
+        return str(path.relative_to(workspace))
+    except ValueError:
+        return str(path)
+
+
+def read_preview_text(path: Path, encoding: str) -> str:
+    if not path.exists():
+        return ""
+    if path.is_dir():
+        return f"[Handex preview: directory {path}]\n"
+    return path.read_text(encoding=encoding, errors="replace")
+
+
+def unified_text_diff(old: str, new: str, fromfile: str, tofile: str) -> str:
+    diff = difflib.unified_diff(
+        old.splitlines(keepends=True),
+        new.splitlines(keepends=True),
+        fromfile=fromfile,
+        tofile=tofile,
+        lineterm="\n",
+    )
+    text = "".join(diff)
+    return clamp_output(text)
+
+
+def preview_file_diff(command: dict[str, Any], workspace: Path, mode: str) -> str:
+    args = command_args(command)
+    tool = str(command.get("tool") or "")
+    path = resolve_path(args.get("path"), workspace, mode)
+    encoding = str(args.get("encoding") or "utf-8")
+    rel = display_path(path, workspace)
+    if tool == "delete_file" and path.is_dir():
+        return f"Directory deletion preview: {rel}/\n"
+    try:
+        old_content = read_preview_text(path, encoding)
+    except OSError as exc:
+        return f"Diff preview unavailable: {type(exc).__name__}: {exc}\n"
+    if tool == "write_file":
+        new_content = str(args.get("content") or "")
+    elif tool == "append_file":
+        new_content = old_content + str(args.get("content") or "")
+    elif tool == "replace_file":
+        old = str(args.get("old") if args.get("old") is not None else args.get("search") or "")
+        new = str(args.get("new") if args.get("new") is not None else args.get("replace") or "")
+        if old == "":
+            return "Diff preview unavailable: replace_file args.old is required.\n"
+        if old not in old_content:
+            return "Diff preview unavailable: search text was not found.\n"
+        count_arg = args.get("count")
+        count = -1 if count_arg in (None, "") else int(count_arg)
+        new_content = old_content.replace(old, new, count)
+    elif tool == "delete_file":
+        if not path.exists():
+            return "Diff preview unavailable: path does not exist.\n"
+        new_content = ""
+    else:
+        return ""
+    return unified_text_diff(old_content, new_content, f"a/{rel}", f"b/{rel}")
+
+
+def preview_diff(command: dict[str, Any], workspace: Path, cwd: Path, mode: str) -> str:
+    tool = str(command.get("tool") or "")
+    if tool in {"write_file", "append_file", "replace_file", "delete_file"}:
+        return preview_file_diff(command, workspace, mode)
+    if tool == "apply_patch":
+        args = command_args(command)
+        patch = str(args.get("patch") or args.get("diff") or "")
+        if not patch.strip():
+            return ""
+        validate_patch_paths(patch, mode)
+        return clamp_output(patch)
+    return ""
 
 
 def preview_command(command: dict[str, Any]) -> str:

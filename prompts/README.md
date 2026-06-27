@@ -29,3 +29,8 @@ The project page also exposes a Continuation Transcript. It packages project
 metadata, goal, summary, workspace context, recent summaries, and recent
 tool/project events into a copyable prompt for resuming the same Hand Loop in
 another web LLM session.
+
+When a parsed Tool Command would change files, Handex renders a read-only Diff
+Preview before execution. This preview covers `write_file`, `append_file`,
+`replace_file`, `delete_file`, and `apply_patch`, and gives the human a
+Codex-like review surface before approving the command.

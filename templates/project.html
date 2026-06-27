@@ -204,6 +204,12 @@
         <div><dt>CWD</dt><dd>{{ choice.preview.cwd or "Preview blocked" }}</dd></div>
         <div><dt>Final Command</dt><dd><code>{{ choice.preview.final_command or "(none)" }}</code></dd></div>
       </dl>
+      {% if choice.preview.diff_preview %}
+        <label>
+          Diff Preview
+          <textarea class="mono medium" readonly>{{ choice.preview.diff_preview }}</textarea>
+        </label>
+      {% endif %}
       <form class="stack" method="post" action="/projects/{{ project.id }}/execute">
         <label>
           JSON

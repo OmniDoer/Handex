@@ -329,6 +329,7 @@ def parse_reply(
                         "cwd": "",
                         "final_command": preview_command(candidate.command),
                         "warnings": [f"{type(exc).__name__}: {exc}"],
+                        "diff_preview": "",
                     },
                     "blocked": True,
                 }

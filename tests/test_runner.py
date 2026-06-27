@@ -90,6 +90,54 @@ class RunnerTests(unittest.TestCase):
             with self.assertRaises(ToolError):
                 registry.run({"tool": "apply_patch", "args": {"patch": patch}, "cwd": "."}, tmp, "safe")
 
+    def test_preview_write_file_shows_unified_diff_without_writing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "note.txt"
+            path.write_text("old\n", encoding="utf-8")
+
+            preview = registry.preview({"tool": "write_file", "args": {"path": "note.txt", "content": "new\n"}}, tmp, "safe")
+
+            self.assertTrue(preview.diff_preview.startswith("--- a/note.txt\n+++ b/note.txt\n"))
+            self.assertIn("--- a/note.txt", preview.diff_preview)
+            self.assertIn("+++ b/note.txt", preview.diff_preview)
+            self.assertIn("-old", preview.diff_preview)
+            self.assertIn("+new", preview.diff_preview)
+            self.assertEqual(path.read_text(encoding="utf-8"), "old\n")
+
+    def test_preview_replace_and_delete_file_show_diff(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "note.txt"
+            path.write_text("alpha\nbeta\n", encoding="utf-8")
+
+            replace = registry.preview(
+                {"tool": "replace_file", "args": {"path": "note.txt", "old": "beta", "new": "gamma"}},
+                tmp,
+                "safe",
+            )
+            delete = registry.preview({"tool": "delete_file", "args": {"path": "note.txt"}}, tmp, "safe")
+
+            self.assertIn("-beta", replace.diff_preview)
+            self.assertIn("+gamma", replace.diff_preview)
+            self.assertIn("-alpha", delete.diff_preview)
+            self.assertIn("-beta", delete.diff_preview)
+            self.assertTrue(path.exists())
+
+    def test_preview_apply_patch_returns_reviewed_patch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            patch = (
+                "diff --git a/note.txt b/note.txt\n"
+                "--- a/note.txt\n"
+                "+++ b/note.txt\n"
+                "@@ -1 +1 @@\n"
+                "-old\n"
+                "+new\n"
+            )
+
+            preview = registry.preview({"tool": "apply_patch", "args": {"patch": patch}, "cwd": "."}, tmp, "safe")
+
+            self.assertIn("diff --git a/note.txt b/note.txt", preview.diff_preview)
+            self.assertIn("+new", preview.diff_preview)
+
     def test_context_pack_includes_agents_and_redacts_secret_lines(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

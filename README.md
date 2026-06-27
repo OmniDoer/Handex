@@ -113,6 +113,12 @@ returns a `ToolResult`.
 `apply_patch` accepts a unified diff and runs `git apply --check` before
 applying it. In Safe Mode, absolute paths and `..` paths are rejected.
 
+Before execution, Handex shows a unified Diff Preview for file-changing tools:
+`write_file`, `append_file`, `replace_file`, `delete_file`, and `apply_patch`.
+The preview is generated without writing files, so the human can review the
+same kind of patch surface they would normally inspect in a coding agent before
+clicking Execute.
+
 `context_pack` returns a Codex-style workspace orientation snapshot: Git status,
 recent commits, workspace `AGENTS.md` instructions, top-level manifests, and a
 bounded file tree. Secret-looking files are omitted from the tree, and
@@ -155,7 +161,7 @@ The migration target is muscle-memory compatibility:
   DeepSeek, Kimi, Doubao, Tongyi, or another web LLM
 - paste the full web LLM reply back into Handex; do not manually extract JSON
 - review the same surface Codex would have reviewed internally: JSON, command,
-  cwd, mode, stdout, stderr, and result prompt
+  cwd, mode, diff preview, stdout, stderr, and result prompt
 - use familiar tools: `shell`, `python`, `git`, `apply_patch`, file tools,
   `context_pack`, skills, and vault-backed command execution
 - keep working one step at a time until the Summary is updated
@@ -396,7 +402,6 @@ handex/
 
 - Per-project auth roles
 - Richer plugin loading from `plugins/`
-- Diff preview for file-write tools
 - Streaming command output
 - Nginx optional TLS reverse proxy
 - Import/export project snapshots
