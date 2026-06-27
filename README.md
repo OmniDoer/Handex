@@ -86,6 +86,7 @@ Built-in tools:
 - `search_files`
 - `grep`
 - `git`
+- `git_bootstrap`
 - `apply_patch`
 - `list_skills`
 - `read_skill`
@@ -135,6 +136,11 @@ through the project page. Uploaded files live under `.handex_uploads/` inside
 the workspace, so normal file tools can read, search, patch, or delete them
 after review.
 
+`git_bootstrap` clones a Git repository into an empty project workspace without
+shell interpolation. Repository URLs with embedded credentials are rejected;
+private clone flows should use reviewed Vault-backed commands instead of
+pasting tokens into URLs.
+
 `plugin_list` and `plugin_run` expose configured command plugins from
 `HANDEX_PLUGIN_ROOTS`. A plugin is a directory containing `plugin.json`; it
 declares a command argv, description, timeout, and whether it is allowed in
@@ -158,6 +164,7 @@ LLM how to behave like a coding agent inside the Hand Loop:
 
 - inspect local context through Tool Commands
 - refresh repo orientation through `context_pack`
+- bootstrap an empty workspace from Git through `git_bootstrap`
 - produce at most one next Tool Command per turn
 - request exact file reads and edits
 - apply focused unified diffs through `apply_patch`
@@ -224,6 +231,26 @@ review loop intact:
 Upload filenames and optional paths are sanitized, parent traversal is rejected,
 text previews redact common secret-looking lines, and the default upload limit
 is controlled by `HANDEX_MAX_UPLOAD_BYTES`.
+
+## Git Workspace Bootstrap
+
+Handex can create a project around a Git repository instead of an already
+populated directory. The Create Project form accepts an optional repository URL,
+branch/ref, and clone depth. Existing projects also have a Git Workspace
+Bootstrap form for empty workspaces.
+
+The same operation is exposed to web LLMs as a reviewed Tool Command:
+
+```json
+{"tool":"git_bootstrap","args":{"repo_url":"https://github.com/org/repo.git","branch":"main","depth":1},"mode":"safe","reason":"clone the target repository into an empty workspace"}
+```
+
+The target workspace must be empty. The command is executed as argv, not a shell
+string, and rejects repository URLs containing embedded username/password
+credentials. Use `depth: 0` for a full clone.
+
+After a successful bootstrap, the normal `context_pack`, `git`, `read_file`,
+`grep`, and patch tools operate on the cloned worktree.
 
 ## Skills
 
@@ -486,5 +513,4 @@ handex/
 - Per-project auth roles
 - Streaming command output
 - Nginx optional TLS reverse proxy
-- Workspace Git repository bootstrap helpers
 - Offline read-only project cache

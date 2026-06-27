@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+import re
 import textwrap
 from typing import Any
 
 from . import __version__
+from .bootstrap import redacted_repo_url
 from .capabilities import skill_pack_prompt
-from .context import build_context_pack
+from .context import build_context_pack, redact_text
 from .plugins import plugin_catalog_prompt
 from .uploads import upload_inventory_prompt
 
@@ -23,6 +25,7 @@ TOOL_NAMES = [
     "search_files",
     "grep",
     "git",
+    "git_bootstrap",
     "apply_patch",
     "list_skills",
     "read_skill",
@@ -54,11 +57,39 @@ TOOL_SCHEMA = {
 }
 
 
+SENSITIVE_COMMAND_KEY_RE = re.compile(r"(?i)(password|passwd|passphrase|secret|token|api[_ -]?key|private[_ -]?key)")
+URL_USERINFO_RE = re.compile(r"([A-Za-z][A-Za-z0-9+.-]*://)[^/@\s]+@")
+
+
+def redact_command_string(value: str) -> str:
+    return URL_USERINFO_RE.sub(r"\1[REDACTED]@", redact_text(value))
+
+
+def sanitize_command_for_prompt(value: Any) -> Any:
+    if isinstance(value, dict):
+        sanitized: dict[str, Any] = {}
+        for key, item in value.items():
+            key_text = str(key)
+            key_lower = key_text.lower()
+            if key_lower in {"repo_url", "url"} and isinstance(item, str):
+                sanitized[key_text] = redacted_repo_url(item)
+            elif SENSITIVE_COMMAND_KEY_RE.search(key_text):
+                sanitized[key_text] = "[REDACTED]"
+            else:
+                sanitized[key_text] = sanitize_command_for_prompt(item)
+        return sanitized
+    if isinstance(value, list):
+        return [sanitize_command_for_prompt(item) for item in value]
+    if isinstance(value, str):
+        return redact_command_string(value)
+    return value
+
+
 DEFAULT_TOOL_PROTOCOL = """When you need Linux tools, output exactly one Tool Command JSON object.
 
 Schema:
 {
-  "tool": "shell | python | read_file | write_file | append_file | replace_file | delete_file | list_files | search_files | grep | git | apply_patch | list_skills | read_skill | skill_pack | list_vault_credentials | vault_list | vault_run | capability_report | context_pack | list_uploads | plugin_list | plugin_run",
+  "tool": "shell | python | read_file | write_file | append_file | replace_file | delete_file | list_files | search_files | grep | git | git_bootstrap | apply_patch | list_skills | read_skill | skill_pack | list_vault_credentials | vault_list | vault_run | capability_report | context_pack | list_uploads | plugin_list | plugin_run",
   "args": {},
   "cwd": ".",
   "mode": "safe",
@@ -70,6 +101,7 @@ Examples:
 {"tool":"read_file","args":{"path":"README.md"},"mode":"safe","reason":"read project docs"}
 {"tool":"write_file","args":{"path":"notes.txt","content":"hello\\n"},"mode":"safe","reason":"create a note"}
 {"tool":"git","args":{"args":["status","--short"]},"cwd":".","mode":"safe","reason":"inspect git status"}
+{"tool":"git_bootstrap","args":{"repo_url":"https://github.com/org/repo.git","branch":"main","depth":1},"mode":"safe","reason":"clone the target repository into an empty workspace"}
 {"tool":"apply_patch","args":{"patch":"diff --git a/file.txt b/file.txt\\n--- a/file.txt\\n+++ b/file.txt\\n@@ -1 +1 @@\\n-old\\n+new\\n"},"cwd":".","mode":"safe","reason":"apply a reviewed unified diff"}
 {"tool":"list_skills","args":{},"mode":"safe","reason":"inspect available Handex skills"}
 {"tool":"read_skill","args":{"skill_id":"root1:example-skill"},"mode":"safe","reason":"load relevant skill instructions"}
@@ -156,6 +188,7 @@ Operating rules:
 - Never say a command ran until Handex returns Tool Result.
 - Keep secrets out of chat. Vault access is metadata-only unless the human explicitly runs a local Vault-backed command after review.
 - Use Handex skills by listing configured skill roots first, then reading only the relevant SKILL.md instructions.
+- Use git_bootstrap to clone a repository only when the workspace is empty and the URL has no embedded credentials.
 - Use context_pack for Codex-style workspace orientation when Git status, AGENTS.md, manifests, or the file tree may matter.
 - Use list_uploads and read_file for user-uploaded files under .handex_uploads/.
 - Use plugin_list before plugin_run; only run configured plugins that directly apply to the task.
@@ -265,7 +298,8 @@ def build_correction_prompt(project: dict[str, Any], llm_reply: str, parse_error
 def build_tool_result_prompt(project: dict[str, Any], result: Any) -> str:
     stdout = compact(result.stdout or "", 12000)
     stderr = compact(result.stderr or "", 8000)
-    command_json = json.dumps(result.command, ensure_ascii=False, indent=2)
+    final_command = compact(redact_command_string(result.final_command or ""), 4000)
+    command_json = json.dumps(sanitize_command_for_prompt(result.command), ensure_ascii=False, indent=2)
     return textwrap.dedent(
         f"""
         Handex Tool Result
@@ -280,7 +314,7 @@ def build_tool_result_prompt(project: dict[str, Any], result: Any) -> str:
         {command_json}
 
         Final Command:
-        {result.final_command}
+        {final_command}
 
         STDOUT:
         {stdout or "(empty)"}

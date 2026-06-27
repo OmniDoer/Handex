@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
+from ..bootstrap import BootstrapError, bootstrap_workspace_from_git, redacted_repo_url
 from ..capabilities import configured_capability_report, list_skills, list_vault_metadata, read_skill, skill_pack_prompt
 from ..config import settings
 from ..context import build_context_pack
@@ -266,6 +267,8 @@ def preview_command(command: dict[str, Any]) -> str:
     if tool == "git":
         git_args = git_command_args(command)
         return "git " + " ".join(shlex.quote(item) for item in git_args)
+    if tool == "git_bootstrap":
+        return f"git clone {redacted_repo_url(str(args.get('repo_url') or args.get('url') or ''))}"
     if tool == "apply_patch":
         return "git apply --check && git apply"
     if tool in {"read_file", "write_file", "append_file", "replace_file", "delete_file", "list_files", "search_files", "grep"}:
@@ -387,6 +390,28 @@ def run_git(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
     argv = ["git", *args]
     final_command = "git " + " ".join(shlex.quote(item) for item in args)
     return subprocess_result(command=command, tool="git", mode=mode, cwd=cwd, final_command=final_command, argv=argv)
+
+
+def run_git_bootstrap(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    args = command_args(command)
+    repo_url = str(args.get("repo_url") or args.get("url") or "")
+    branch = str(args.get("branch") or args.get("ref") or "")
+    depth = args.get("depth", 1)
+    try:
+        result = bootstrap_workspace_from_git(workspace, repo_url, branch=branch, depth=depth, timeout=timeout_for(command, mode))
+    except BootstrapError as exc:
+        raise ToolError(str(exc)) from exc
+    stdout = result.stdout or (f"Cloned {result.redacted_repo_url} into {result.workspace}\n" if result.exit_code == 0 else "")
+    return ToolResult(
+        "git_bootstrap",
+        command,
+        mode,
+        str(Path(result.workspace).parent),
+        result.command,
+        result.exit_code,
+        clamp_output(stdout),
+        clamp_output(result.stderr),
+    )
 
 
 def validate_patch_paths(patch: str, mode: str) -> None:
@@ -779,6 +804,7 @@ registry = ToolRegistry()
 registry.register("shell", run_shell)
 registry.register("python", run_python)
 registry.register("git", run_git)
+registry.register("git_bootstrap", run_git_bootstrap)
 registry.register("apply_patch", run_apply_patch)
 registry.register("read_file", run_read_file)
 registry.register("write_file", run_write_file)

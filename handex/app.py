@@ -12,6 +12,7 @@ from fastapi.templating import Jinja2Templates
 
 from . import __version__
 from .auth import login_response, logout_response, request_next_url, require_auth, verify_password
+from .bootstrap import BootstrapError, bootstrap_workspace_from_git
 from .capabilities import list_skills, list_vault_metadata
 from .config import settings
 from .context import build_context_pack
@@ -41,6 +42,8 @@ from .prompts import (
     build_start_prompt,
     build_summary_prompt,
     build_tool_result_prompt,
+    redact_command_string,
+    sanitize_command_for_prompt,
 )
 from .snapshot import build_project_snapshot, dumps_snapshot, imported_project_data, parse_snapshot
 from .tools.runner import ToolError, ToolResult, preview_command, registry
@@ -81,6 +84,23 @@ def unique_workspace_path(name: str) -> str:
         if not candidate.exists():
             return str(candidate)
     return str(settings.projects_dir / f"{base.name}-imported")
+
+
+def record_git_bootstrap(project_id: int, workspace: str, repo_url: str, branch: str = "", depth: str = "") -> None:
+    try:
+        result = bootstrap_workspace_from_git(workspace, repo_url, branch=branch, depth=depth)
+    except BootstrapError as exc:
+        add_log(project_id, "workspace.git_bootstrap.error", stderr=str(exc))
+        return
+    add_log(
+        project_id,
+        "workspace.git_bootstrap",
+        final_command=result.command,
+        cwd=str(Path(result.workspace).parent),
+        exit_code=result.exit_code,
+        stdout=result.stdout or (f"Cloned {result.redacted_repo_url} into {result.workspace}\n" if result.exit_code == 0 else ""),
+        stderr=result.stderr,
+    )
 
 
 def project_or_404(project_id: int) -> dict[str, Any]:
@@ -181,6 +201,9 @@ def create_project_route(
     description: Annotated[str, Form()] = "",
     goal: Annotated[str, Form()] = "",
     workspace_path: Annotated[str, Form()] = "",
+    git_repo_url: Annotated[str, Form()] = "",
+    git_branch: Annotated[str, Form()] = "",
+    git_depth: Annotated[str, Form()] = "1",
     _: None = Depends(require_auth),
 ) -> RedirectResponse:
     name = name.strip()
@@ -197,6 +220,8 @@ def create_project_route(
             "mode": "safe",
         }
     )
+    if git_repo_url.strip():
+        record_git_bootstrap(project_id, workspace, git_repo_url, git_branch, git_depth)
     return redirect(f"/projects/{project_id}")
 
 
@@ -313,6 +338,20 @@ def delete_project_route(project_id: int, _: None = Depends(require_auth)) -> Re
     project_or_404(project_id)
     delete_project(project_id)
     return redirect("/")
+
+
+@app.post("/projects/{project_id}/bootstrap/git")
+def bootstrap_project_git_route(
+    project_id: int,
+    git_repo_url: Annotated[str, Form()],
+    git_branch: Annotated[str, Form()] = "",
+    git_depth: Annotated[str, Form()] = "1",
+    _: None = Depends(require_auth),
+) -> RedirectResponse:
+    project = project_or_404(project_id)
+    workspace = str(ensure_workspace(project["workspace_path"]))
+    record_git_bootstrap(project_id, workspace, git_repo_url, git_branch, git_depth)
+    return redirect(f"/projects/{project_id}#git-bootstrap")
 
 
 @app.post("/projects/{project_id}/uploads")
@@ -492,8 +531,8 @@ def execute_command(
         int(project["id"]),
         "tool.execute",
         mode=result.mode,
-        command_json=json.dumps(result.command, ensure_ascii=False, indent=2),
-        final_command=result.final_command,
+        command_json=json.dumps(sanitize_command_for_prompt(result.command), ensure_ascii=False, indent=2),
+        final_command=redact_command_string(result.final_command),
         cwd=result.cwd,
         exit_code=result.exit_code,
         stdout=result.stdout,

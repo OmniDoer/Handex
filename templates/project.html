@@ -110,6 +110,28 @@
   {% endif %}
 </details>
 
+<details class="section-block" id="git-bootstrap">
+  <summary>Git Workspace Bootstrap</summary>
+  <form class="stack" method="post" action="/projects/{{ project.id }}/bootstrap/git">
+    <label>
+      Repository URL
+      <input name="git_repo_url" required placeholder="https://github.com/org/repo.git">
+    </label>
+    <label>
+      Branch Or Ref
+      <input name="git_branch" placeholder="main">
+    </label>
+    <label>
+      Clone Depth
+      <input name="git_depth" inputmode="numeric" value="1" placeholder="1 for shallow, 0 for full clone">
+    </label>
+    <div class="button-row">
+      <button type="submit">Clone Into Empty Workspace</button>
+      <span class="hint">The workspace must be empty. Do not paste repository URLs containing passwords or tokens.</span>
+    </div>
+  </form>
+</details>
+
 <details class="section-block" id="capabilities">
   <summary>Skills, Plugins And Vault</summary>
   <div class="section-title inner">

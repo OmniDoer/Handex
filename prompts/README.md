@@ -44,3 +44,7 @@ Workspace uploads are exposed through the project page and the `list_uploads`
 tool. Uploaded files live under `.handex_uploads/` inside the workspace, and
 the Single-Step Agent Prompt includes a compact inventory so the LLM can ask
 for focused `read_file`, `grep`, or shell processing of user-provided files.
+
+Git bootstrap is exposed through project forms and the `git_bootstrap` tool.
+It lets a web LLM request a reviewed clone into an empty workspace without
+constructing shell commands or embedding credentials in URLs.
