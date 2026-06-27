@@ -117,6 +117,18 @@ Built-in tools:
 - `omnidoer_chat_delta`
 - `omnidoer_chat_complete`
 - `omnidoer_chat_record`
+- `omnidoer_doctor`
+- `omnidoer_control_status`
+- `omnidoer_control_devices`
+- `omnidoer_control_sessions`
+- `omnidoer_control_tunnel_info`
+- `omnidoer_control_security_status`
+- `omnidoer_control_sync_status`
+- `omnidoer_audit_tail`
+- `omnidoer_audit_verify`
+- `omnidoer_policy_test`
+- `omnidoer_telegram_status`
+- `omnidoer_browser_open`
 - `capability_report`
 - `capability_search`
 - `context_pack`
@@ -246,6 +258,16 @@ bridge OmniDoer's Control Client chat/transcript commands. Safe Mode peeks at
 the next message with `--no-claim`; claiming a message requires YOLO Mode after
 review. Chat text is treated as public coordination text, not a secret channel.
 
+`omnidoer_doctor`, `omnidoer_control_status`,
+`omnidoer_control_devices`, `omnidoer_control_sessions`,
+`omnidoer_control_tunnel_info`, `omnidoer_control_security_status`,
+`omnidoer_control_sync_status`, `omnidoer_audit_tail`,
+`omnidoer_audit_verify`, `omnidoer_policy_test`, and
+`omnidoer_telegram_status` expose OmniDoer readiness, pairing, sync, audit,
+policy, and notification diagnostics through argv calls. `omnidoer_browser_open`
+opens a reviewed URL through OmniDoer's browser bridge; Safe Mode requires
+HTTPS.
+
 `plugin_list` and `plugin_run` expose configured command plugins from
 `HANDEX_PLUGIN_ROOTS`. A plugin is a directory containing `plugin.json`; it
 declares a command argv, description, timeout, and whether it is allowed in
@@ -292,6 +314,9 @@ LLM how to behave like a coding agent inside the Hand Loop:
   reviewed human/device coordination
 - inspect and reply through the paired OmniDoer Control Client chat stream,
   including streaming response records
+- inspect OmniDoer doctor/status/devices/sessions/tunnel/security/sync,
+  audit, policy, and Telegram notification status without dropping to shell
+- open reviewed HTTPS URLs through OmniDoer's browser bridge
 - run reviewed Git/GitHub operations with existing OmniDoer vault credentials
   through `omnidoer_git` and `omnidoer_github_api`
 - keep summaries durable between web LLM sessions
@@ -486,6 +511,19 @@ The related tools are:
 - `omnidoer_chat_complete`: complete a streaming assistant message
 - `omnidoer_chat_record`: record a typed chat event for audit or transcript
   continuity
+- `omnidoer_doctor`: run OmniDoer runtime readiness diagnostics
+- `omnidoer_control_status`: inspect Control Client service status
+- `omnidoer_control_devices`: list paired devices
+- `omnidoer_control_sessions`: list active sessions
+- `omnidoer_control_tunnel_info`: show tunnel metadata
+- `omnidoer_control_security_status`: show security status
+- `omnidoer_control_sync_status`: inspect Codex thread/session sync status;
+  Safe Mode uses the default Codex binary
+- `omnidoer_audit_tail`: read recent audit entries
+- `omnidoer_audit_verify`: verify audit log integrity
+- `omnidoer_policy_test`: run OmniDoer policy self-tests
+- `omnidoer_telegram_status`: inspect Telegram notification bridge status
+- `omnidoer_browser_open`: open a reviewed URL; Safe Mode requires HTTPS
 - `omnidoer_git`: run `omnidoer git run` with the configured vault bridge
 - `omnidoer_github_api`: run `omnidoer github api` with the configured vault
   bridge

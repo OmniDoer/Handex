@@ -74,6 +74,17 @@ SAFE_BATCH_TOOLS = {
     "omnidoer_task_list",
     "omnidoer_chat_messages",
     "omnidoer_chat_next",
+    "omnidoer_doctor",
+    "omnidoer_control_status",
+    "omnidoer_control_devices",
+    "omnidoer_control_sessions",
+    "omnidoer_control_tunnel_info",
+    "omnidoer_control_security_status",
+    "omnidoer_control_sync_status",
+    "omnidoer_audit_tail",
+    "omnidoer_audit_verify",
+    "omnidoer_policy_test",
+    "omnidoer_telegram_status",
     "plugin_list",
 }
 SAFE_BATCH_GIT_COMMANDS = {"status", "log", "show", "diff", "rev-parse", "ls-files", "grep", "describe", "blame"}
@@ -362,6 +373,30 @@ def preview_command(command: dict[str, Any]) -> str:
     if tool == "omnidoer_chat_record":
         text = str(args.get("text") or args.get("message") or "")
         return f"omnidoer control chat-record {args.get('record_type') or args.get('type') or ''} {shlex.quote(redact_context_text(text)[:80])}"
+    if tool == "omnidoer_doctor":
+        return "omnidoer doctor"
+    if tool == "omnidoer_control_status":
+        return "omnidoer control status"
+    if tool == "omnidoer_control_devices":
+        return "omnidoer control devices"
+    if tool == "omnidoer_control_sessions":
+        return "omnidoer control sessions"
+    if tool == "omnidoer_control_tunnel_info":
+        return "omnidoer control tunnel-info"
+    if tool == "omnidoer_control_security_status":
+        return "omnidoer control security-status"
+    if tool == "omnidoer_control_sync_status":
+        return f"omnidoer control sync-status {args.get('thread_id') or ''}"
+    if tool == "omnidoer_audit_tail":
+        return "omnidoer audit tail"
+    if tool == "omnidoer_audit_verify":
+        return "omnidoer audit verify"
+    if tool == "omnidoer_policy_test":
+        return "omnidoer policy test"
+    if tool == "omnidoer_telegram_status":
+        return "omnidoer telegram status"
+    if tool == "omnidoer_browser_open":
+        return f"omnidoer browser open {args.get('url') or ''}"
     if tool == "git_bootstrap":
         return f"git clone {redacted_repo_url(str(args.get('repo_url') or args.get('url') or ''))}"
     if tool == "apply_patch":
@@ -715,6 +750,22 @@ def validate_control_origin(origin: str, mode: str) -> None:
         raise ToolError("origin must include an http(s) scheme and host")
     if mode == "safe" and parsed.scheme != "https":
         raise ToolError("Safe Mode credential requests require an HTTPS origin. Use YOLO Mode after review for local HTTP origins.")
+
+
+def validate_browser_url(url: str, mode: str) -> None:
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise ToolError("omnidoer_browser_open args.url must include an http(s) scheme and host")
+    if mode == "safe" and parsed.scheme != "https":
+        raise ToolError("Safe Mode omnidoer_browser_open requires an HTTPS URL. Use YOLO Mode after review for local HTTP URLs.")
+
+
+def run_omnidoer_public_command(command: dict[str, Any], workspace: Path, mode: str, tool: str, argv: list[str]) -> ToolResult:
+    cwd = resolve_cwd(command, workspace, mode)
+    result = run_omnidoer_subprocess(command, tool=tool, mode=mode, cwd=cwd, argv=argv)
+    payload = parse_public_json_or_kv(result.stdout)
+    output = public_json(payload)
+    return ToolResult(tool, command, mode, result.cwd, result.final_command, result.exit_code, output + "\n", result.stderr)
 
 
 def run_omnidoer_credential_request(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
@@ -1081,6 +1132,69 @@ def run_omnidoer_chat_record(command: dict[str, Any], workspace: Path, mode: str
         payload.setdefault("message_id", message_id)
     output = public_json(payload)
     return ToolResult("omnidoer_chat_record", command, mode, result.cwd, redact_command_string(result.final_command), result.exit_code, output + "\n", result.stderr)
+
+
+def run_omnidoer_doctor(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    return run_omnidoer_public_command(command, workspace, mode, "omnidoer_doctor", [*omnidoer_base_argv(), "doctor"])
+
+
+def run_omnidoer_control_status(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    return run_omnidoer_public_command(command, workspace, mode, "omnidoer_control_status", [*omnidoer_base_argv(), "control", "status"])
+
+
+def run_omnidoer_control_devices(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    return run_omnidoer_public_command(command, workspace, mode, "omnidoer_control_devices", [*omnidoer_base_argv(), "control", "devices"])
+
+
+def run_omnidoer_control_sessions(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    return run_omnidoer_public_command(command, workspace, mode, "omnidoer_control_sessions", [*omnidoer_base_argv(), "control", "sessions"])
+
+
+def run_omnidoer_control_tunnel_info(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    return run_omnidoer_public_command(command, workspace, mode, "omnidoer_control_tunnel_info", [*omnidoer_base_argv(), "control", "tunnel-info"])
+
+
+def run_omnidoer_control_security_status(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    return run_omnidoer_public_command(command, workspace, mode, "omnidoer_control_security_status", [*omnidoer_base_argv(), "control", "security-status"])
+
+
+def run_omnidoer_control_sync_status(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    args = command_args(command)
+    argv = [*omnidoer_base_argv(), "control", "sync-status"]
+    thread_id = plain_token_arg(args, "thread_id", "omnidoer_control_sync_status")
+    if thread_id:
+        argv.extend(["--thread-id", thread_id])
+    codex_bin = str(args.get("codex_bin") or "")
+    if codex_bin:
+        if mode == "safe":
+            raise ToolError("Safe Mode omnidoer_control_sync_status uses the default Codex binary. Use YOLO Mode after review to override codex_bin.")
+        argv.extend(["--codex-bin", codex_bin])
+    return run_omnidoer_public_command(command, workspace, mode, "omnidoer_control_sync_status", argv)
+
+
+def run_omnidoer_audit_tail(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    return run_omnidoer_public_command(command, workspace, mode, "omnidoer_audit_tail", [*omnidoer_base_argv(), "audit", "tail"])
+
+
+def run_omnidoer_audit_verify(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    return run_omnidoer_public_command(command, workspace, mode, "omnidoer_audit_verify", [*omnidoer_base_argv(), "audit", "verify"])
+
+
+def run_omnidoer_policy_test(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    return run_omnidoer_public_command(command, workspace, mode, "omnidoer_policy_test", [*omnidoer_base_argv(), "policy", "test"])
+
+
+def run_omnidoer_telegram_status(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    return run_omnidoer_public_command(command, workspace, mode, "omnidoer_telegram_status", [*omnidoer_base_argv(), "telegram", "status"])
+
+
+def run_omnidoer_browser_open(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    args = command_args(command)
+    url = str(args.get("url") or "")
+    if not url:
+        raise ToolError("omnidoer_browser_open args.url is required")
+    validate_browser_url(url, mode)
+    return run_omnidoer_public_command(command, workspace, mode, "omnidoer_browser_open", [*omnidoer_base_argv(), "browser", "open", url])
 
 
 def run_omnidoer_git(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
@@ -2050,6 +2164,18 @@ registry.register("omnidoer_chat_start", run_omnidoer_chat_start)
 registry.register("omnidoer_chat_delta", run_omnidoer_chat_delta)
 registry.register("omnidoer_chat_complete", run_omnidoer_chat_complete)
 registry.register("omnidoer_chat_record", run_omnidoer_chat_record)
+registry.register("omnidoer_doctor", run_omnidoer_doctor)
+registry.register("omnidoer_control_status", run_omnidoer_control_status)
+registry.register("omnidoer_control_devices", run_omnidoer_control_devices)
+registry.register("omnidoer_control_sessions", run_omnidoer_control_sessions)
+registry.register("omnidoer_control_tunnel_info", run_omnidoer_control_tunnel_info)
+registry.register("omnidoer_control_security_status", run_omnidoer_control_security_status)
+registry.register("omnidoer_control_sync_status", run_omnidoer_control_sync_status)
+registry.register("omnidoer_audit_tail", run_omnidoer_audit_tail)
+registry.register("omnidoer_audit_verify", run_omnidoer_audit_verify)
+registry.register("omnidoer_policy_test", run_omnidoer_policy_test)
+registry.register("omnidoer_telegram_status", run_omnidoer_telegram_status)
+registry.register("omnidoer_browser_open", run_omnidoer_browser_open)
 registry.register("omnidoer_git", run_omnidoer_git)
 registry.register("omnidoer_github_api", run_omnidoer_github_api)
 registry.register("git_bootstrap", run_git_bootstrap)

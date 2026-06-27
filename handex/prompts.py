@@ -45,6 +45,18 @@ TOOL_NAMES = [
     "omnidoer_chat_delta",
     "omnidoer_chat_complete",
     "omnidoer_chat_record",
+    "omnidoer_doctor",
+    "omnidoer_control_status",
+    "omnidoer_control_devices",
+    "omnidoer_control_sessions",
+    "omnidoer_control_tunnel_info",
+    "omnidoer_control_security_status",
+    "omnidoer_control_sync_status",
+    "omnidoer_audit_tail",
+    "omnidoer_audit_verify",
+    "omnidoer_policy_test",
+    "omnidoer_telegram_status",
+    "omnidoer_browser_open",
     "omnidoer_git",
     "omnidoer_github_api",
     "git_bootstrap",
@@ -121,7 +133,7 @@ DEFAULT_TOOL_PROTOCOL = """When you need Linux tools, output exactly one Tool Co
 
 Schema:
 {
-  "tool": "shell | background_shell | python | read_file | write_file | append_file | replace_file | delete_file | list_files | search_files | grep | git | omnidoer_credential_request | omnidoer_credential_save_request | omnidoer_request_status | omnidoer_request_wait | omnidoer_request_deny | omnidoer_task_submit | omnidoer_task_list | omnidoer_task_complete | omnidoer_task_cancel | omnidoer_chat_messages | omnidoer_chat_next | omnidoer_chat_send | omnidoer_chat_reply | omnidoer_chat_log_user | omnidoer_chat_start | omnidoer_chat_delta | omnidoer_chat_complete | omnidoer_chat_record | omnidoer_git | omnidoer_github_api | git_bootstrap | apply_patch | list_skills | read_skill | read_skill_file | skill_pack | list_vault_credentials | vault_list | vault_run | capability_report | capability_search | context_pack | list_uploads | download_file | view_image | recent_results | tool_batch | update_plan | plan_status | job_status | job_stop | plugin_list | plugin_run",
+  "tool": "shell | background_shell | python | read_file | write_file | append_file | replace_file | delete_file | list_files | search_files | grep | git | omnidoer_credential_request | omnidoer_credential_save_request | omnidoer_request_status | omnidoer_request_wait | omnidoer_request_deny | omnidoer_task_submit | omnidoer_task_list | omnidoer_task_complete | omnidoer_task_cancel | omnidoer_chat_messages | omnidoer_chat_next | omnidoer_chat_send | omnidoer_chat_reply | omnidoer_chat_log_user | omnidoer_chat_start | omnidoer_chat_delta | omnidoer_chat_complete | omnidoer_chat_record | omnidoer_doctor | omnidoer_control_status | omnidoer_control_devices | omnidoer_control_sessions | omnidoer_control_tunnel_info | omnidoer_control_security_status | omnidoer_control_sync_status | omnidoer_audit_tail | omnidoer_audit_verify | omnidoer_policy_test | omnidoer_telegram_status | omnidoer_browser_open | omnidoer_git | omnidoer_github_api | git_bootstrap | apply_patch | list_skills | read_skill | read_skill_file | skill_pack | list_vault_credentials | vault_list | vault_run | capability_report | capability_search | context_pack | list_uploads | download_file | view_image | recent_results | tool_batch | update_plan | plan_status | job_status | job_stop | plugin_list | plugin_run",
   "args": {},
   "cwd": ".",
   "mode": "safe",
@@ -151,6 +163,12 @@ Examples:
 {"tool":"omnidoer_chat_start","args":{"reply_to":"msg_example","source":"handex"},"mode":"safe","reason":"start a streaming assistant chat response"}
 {"tool":"omnidoer_chat_delta","args":{"message_id":"msg_example","delta":"Partial response text."},"mode":"safe","reason":"append a reviewed chat response delta"}
 {"tool":"omnidoer_chat_complete","args":{"message_id":"msg_example"},"mode":"safe","reason":"complete a streaming chat response"}
+{"tool":"omnidoer_doctor","args":{},"mode":"safe","reason":"check OmniDoer runtime readiness"}
+{"tool":"omnidoer_control_status","args":{},"mode":"safe","reason":"inspect OmniDoer Control Client status"}
+{"tool":"omnidoer_control_sync_status","args":{"thread_id":"thread_example"},"mode":"safe","reason":"inspect Codex thread sync status"}
+{"tool":"omnidoer_audit_verify","args":{},"mode":"safe","reason":"verify OmniDoer audit log integrity"}
+{"tool":"omnidoer_policy_test","args":{},"mode":"safe","reason":"run OmniDoer policy self-tests"}
+{"tool":"omnidoer_browser_open","args":{"url":"https://example.com"},"mode":"safe","reason":"open a reviewed HTTPS URL through OmniDoer browser bridge"}
 {"tool":"omnidoer_git","args":{"args":["ls-remote","https://github.com/org/private-repo.git"],"credential_id":"cred_example"},"cwd":".","mode":"safe","reason":"inspect a private Git remote through OmniDoer's vault bridge"}
 {"tool":"omnidoer_github_api","args":{"method":"GET","path":"/user","credential_id":"cred_example"},"mode":"safe","reason":"inspect the authenticated GitHub identity without exposing the token"}
 {"tool":"git_bootstrap","args":{"repo_url":"https://github.com/org/repo.git","branch":"main","depth":1},"mode":"safe","reason":"clone the target repository into an empty workspace"}
@@ -183,6 +201,7 @@ Vault rules:
 - omnidoer_request_status and omnidoer_request_wait return public request metadata only; use omnidoer_request_deny to cancel a stale request.
 - omnidoer_task_submit, omnidoer_task_list, omnidoer_task_complete, and omnidoer_task_cancel bridge OmniDoer Control Client task queues; task text is user-visible coordination, not a place for secrets.
 - omnidoer_chat_* tools bridge OmniDoer Control Client chat/transcript flows; chat text is visible coordination, not a place for secrets.
+- omnidoer_doctor, omnidoer_control_*, omnidoer_audit_*, omnidoer_policy_test, and omnidoer_telegram_status expose reviewed diagnostics and status; omnidoer_browser_open requires HTTPS in Safe Mode.
 - omnidoer_git and omnidoer_github_api use the server-configured OmniDoer vault bridge; Safe Mode permits only read-only ls-remote and GitHub GET.
 - Never ask Handex to print passwords, tokens, private keys, or decrypted secrets.
 - For credentialed git or GitHub work, prefer omnidoer_git or omnidoer_github_api; use reviewed shell only for credentialed flows those tools do not cover.
@@ -263,6 +282,8 @@ Operating rules:
 - Use omnidoer_credential_request when a needed credential is missing; never ask the user to paste secrets into chat.
 - Use omnidoer_task_submit and omnidoer_task_list when coordination with the paired OmniDoer Control Client task queue is useful; never put passwords, tokens, or private keys in task text.
 - Use omnidoer_chat_messages, omnidoer_chat_next, and omnidoer_chat_reply when the paired OmniDoer Control Client chat stream is part of the task; never put passwords, tokens, or private keys in chat text.
+- Use omnidoer_doctor, omnidoer_control_status, audit/policy, and telegram status tools to diagnose OmniDoer readiness before assuming the paired runtime is broken.
+- Use omnidoer_browser_open only for reviewed URLs; Safe Mode requires HTTPS.
 - Use omnidoer_git or omnidoer_github_api for reviewed Git/GitHub operations that need an existing OmniDoer vault credential.
 - Use context_pack for Codex-style workspace orientation when Git status, inherited AGENTS.md rules, manifests, or the file tree may matter.
 - Use list_uploads, view_image, download_file, and read_file for user-uploaded files and generated artifacts.

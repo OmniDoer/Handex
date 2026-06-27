@@ -82,6 +82,14 @@ Safe Mode peeks at the next chat message with `--no-claim`; claiming requires
 YOLO Mode after review. Chat text is visible coordination, not a credential
 channel.
 
+OmniDoer diagnostics and status commands are exposed through `omnidoer_doctor`,
+`omnidoer_control_status`, `omnidoer_control_devices`,
+`omnidoer_control_sessions`, `omnidoer_control_tunnel_info`,
+`omnidoer_control_security_status`, `omnidoer_control_sync_status`,
+`omnidoer_audit_tail`, `omnidoer_audit_verify`, `omnidoer_policy_test`, and
+`omnidoer_telegram_status`. `omnidoer_browser_open` opens a reviewed URL through
+OmniDoer's browser bridge; Safe Mode requires HTTPS.
+
 Workspace uploads are exposed through the project page and the `list_uploads`
 tool. Uploaded files live under `.handex_uploads/` inside the workspace, and
 the Single-Step Agent Prompt includes a compact inventory so the LLM can ask

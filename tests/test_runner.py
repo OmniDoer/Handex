@@ -48,6 +48,35 @@ class RunnerTests(unittest.TestCase):
                     print(f"origin={origin}")
                     print("expires_at=123.5")
                     print("secret_exposed_to_model=false")
+                elif argv[:1] == ["doctor"]:
+                    print("doctor_ok=true")
+                    print("status=ready")
+                elif argv[:2] == ["control", "status"]:
+                    print(json.dumps({"status": "running", "api_token": "must-not-appear"}))
+                elif argv[:2] == ["control", "devices"]:
+                    print(json.dumps([{"device_id": "dev_1", "name": "phone", "secret": "must-not-appear"}]))
+                elif argv[:2] == ["control", "sessions"]:
+                    print(json.dumps([{"session_id": "sess_1", "status": "active"}]))
+                elif argv[:2] == ["control", "tunnel-info"]:
+                    print(json.dumps({"status": "connected", "url": "https://example.com/tunnel"}))
+                elif argv[:2] == ["control", "security-status"]:
+                    print(json.dumps({"status": "ok", "secret_fields_allowed": False}))
+                elif argv[:2] == ["control", "sync-status"]:
+                    print(json.dumps({
+                        "status": "synced",
+                        "thread_id": argv[argv.index("--thread-id") + 1] if "--thread-id" in argv else None,
+                        "has_codex_bin": "--codex-bin" in argv,
+                    }))
+                elif argv[:2] == ["audit", "tail"]:
+                    print("audit event ok")
+                elif argv[:2] == ["audit", "verify"]:
+                    print(json.dumps({"status": "verified"}))
+                elif argv[:2] == ["policy", "test"]:
+                    print(json.dumps({"status": "passed"}))
+                elif argv[:2] == ["telegram", "status"]:
+                    print(json.dumps({"status": "configured"}))
+                elif argv[:2] == ["browser", "open"]:
+                    print(json.dumps({"status": "opened", "url": argv[2]}))
                 elif argv[:2] == ["cred", "save-request"]:
                     print(json.dumps({
                         "status": "stored",
@@ -446,6 +475,54 @@ class RunnerTests(unittest.TestCase):
                 registry.run({"tool": "omnidoer_chat_next", "args": {"claim": True}}, tmp, "safe")
             with self.assertRaises(ToolError):
                 registry.run({"tool": "omnidoer_chat_delta", "args": {"message_id": "../bad", "delta": "x"}}, tmp, "safe")
+
+    def test_omnidoer_diagnostic_tools_wrap_public_commands(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            script = self.write_fake_omnidoer(Path(tmp))
+            runner.settings = self.fake_omnidoer_settings(script)
+
+            doctor = registry.run({"tool": "omnidoer_doctor", "args": {}}, tmp, "safe")
+            status = registry.run({"tool": "omnidoer_control_status", "args": {}}, tmp, "safe")
+            devices = registry.run({"tool": "omnidoer_control_devices", "args": {}}, tmp, "safe")
+            sessions = registry.run({"tool": "omnidoer_control_sessions", "args": {}}, tmp, "safe")
+            tunnel = registry.run({"tool": "omnidoer_control_tunnel_info", "args": {}}, tmp, "safe")
+            security = registry.run({"tool": "omnidoer_control_security_status", "args": {}}, tmp, "safe")
+            sync = registry.run({"tool": "omnidoer_control_sync_status", "args": {"thread_id": "thread_1"}}, tmp, "safe")
+            audit_tail = registry.run({"tool": "omnidoer_audit_tail", "args": {}}, tmp, "safe")
+            audit_verify = registry.run({"tool": "omnidoer_audit_verify", "args": {}}, tmp, "safe")
+            policy = registry.run({"tool": "omnidoer_policy_test", "args": {}}, tmp, "safe")
+            telegram = registry.run({"tool": "omnidoer_telegram_status", "args": {}}, tmp, "safe")
+            browser = registry.run({"tool": "omnidoer_browser_open", "args": {"url": "https://example.com"}}, tmp, "safe")
+
+        self.assertTrue(json.loads(doctor.stdout)["doctor_ok"])
+        self.assertEqual(json.loads(status.stdout)["api_token"], "[REDACTED]")
+        self.assertNotIn("must-not-appear", status.stdout)
+        self.assertEqual(json.loads(devices.stdout)[0]["secret"], "[REDACTED]")
+        self.assertEqual(json.loads(sessions.stdout)[0]["session_id"], "sess_1")
+        self.assertEqual(json.loads(tunnel.stdout)["status"], "connected")
+        self.assertFalse(json.loads(security.stdout)["secret_fields_allowed"])
+        sync_payload = json.loads(sync.stdout)
+        self.assertEqual(sync_payload["thread_id"], "thread_1")
+        self.assertFalse(sync_payload["has_codex_bin"])
+        self.assertIn("audit event ok", json.dumps(json.loads(audit_tail.stdout)))
+        self.assertEqual(json.loads(audit_verify.stdout)["status"], "verified")
+        self.assertEqual(json.loads(policy.stdout)["status"], "passed")
+        self.assertEqual(json.loads(telegram.stdout)["status"], "configured")
+        self.assertEqual(json.loads(browser.stdout)["url"], "https://example.com")
+
+    def test_omnidoer_diagnostic_safe_mode_restrictions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            script = self.write_fake_omnidoer(Path(tmp))
+            runner.settings = self.fake_omnidoer_settings(script)
+
+            with self.assertRaises(ToolError):
+                registry.run({"tool": "omnidoer_browser_open", "args": {"url": "http://example.com"}}, tmp, "safe")
+            with self.assertRaises(ToolError):
+                registry.run({"tool": "omnidoer_browser_open", "args": {"url": "file:///etc/passwd"}}, tmp, "safe")
+            with self.assertRaises(ToolError):
+                registry.run({"tool": "omnidoer_control_sync_status", "args": {"codex_bin": "/tmp/codex"}}, tmp, "safe")
+            yolo = registry.run({"tool": "omnidoer_control_sync_status", "args": {"codex_bin": "/tmp/codex"}}, tmp, "yolo")
+            self.assertTrue(json.loads(yolo.stdout)["has_codex_bin"])
 
     def test_omnidoer_git_safe_mode_blocks_mutating_subcommands(self):
         with tempfile.TemporaryDirectory() as tmp:
