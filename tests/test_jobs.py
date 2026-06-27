@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from handex import db, jobs
+from handex.jobs import job_sse_message
 from handex.tools.runner import registry
 
 
@@ -66,11 +67,23 @@ class JobTests(unittest.TestCase):
                 "safe",
             )
             job_id = json.loads(result.stdout)["id"]
+            for _ in range(20):
+                status_result = registry.run({"tool": "job_status", "args": {"job_id": job_id}}, str(workspace), "safe")
+                if "before" in status_result.stdout:
+                    break
+                time.sleep(0.1)
             stopped = registry.run({"tool": "job_stop", "args": {"job_id": job_id}}, str(workspace), "safe")
 
             status = json.loads(stopped.stdout)
             self.assertEqual(status["status"], "stopped")
             self.assertIn("before", status["stdout"])
+
+    def test_job_sse_message_uses_named_event_and_json_data(self):
+        message = job_sse_message({"id": 7, "status": "running", "stdout": "ok"})
+
+        self.assertTrue(message.startswith("event: job\n"))
+        self.assertIn('"status": "running"', message)
+        self.assertTrue(message.endswith("\n\n"))
 
 
 if __name__ == "__main__":

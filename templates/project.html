@@ -407,10 +407,10 @@
   <summary>Background Jobs</summary>
   {% if background_jobs %}
     {% for job in background_jobs %}
-      <article class="history-item">
+      <article class="history-item job-item" {% if job.status not in ["completed", "failed", "stopped", "lost"] %}data-job-events="/projects/{{ project.id }}/jobs/{{ job.id }}/events"{% endif %}>
         <div class="command-meta">
           <strong>#{{ job.id }} {{ job.tool }}</strong>
-          <span>{{ job.status|upper }}{% if job.exit_code is not none %} / {{ job.exit_code }}{% endif %}</span>
+          <span data-job-status>{{ job.status|upper }}{% if job.exit_code is not none %} / {{ job.exit_code }}{% endif %}</span>
         </div>
         <dl class="preview-grid">
           <div><dt>Mode</dt><dd>{{ job.mode or "-" }}</dd></div>
@@ -419,24 +419,20 @@
           <div><dt>Command</dt><dd><code>{{ job.final_command or "-" }}</code></dd></div>
         </dl>
         {% if job.status not in ["completed", "failed", "stopped", "lost"] %}
-          <form method="post" action="/projects/{{ project.id }}/jobs/{{ job.id }}/stop">
+          <form method="post" action="/projects/{{ project.id }}/jobs/{{ job.id }}/stop" data-job-stop>
             <button class="danger" type="submit">Stop Job</button>
           </form>
         {% endif %}
-        {% if job.stdout %}
-          <label>
-            STDOUT Tail
-            <textarea id="job-{{ job.id }}-stdout" class="mono medium" readonly>{{ job.stdout }}</textarea>
-          </label>
-          <button type="button" class="secondary small copy-target" data-target="job-{{ job.id }}-stdout">Copy STDOUT</button>
-        {% endif %}
-        {% if job.stderr %}
-          <label>
-            STDERR Tail
-            <textarea id="job-{{ job.id }}-stderr" class="mono medium" readonly>{{ job.stderr }}</textarea>
-          </label>
-          <button type="button" class="secondary small copy-target" data-target="job-{{ job.id }}-stderr">Copy STDERR</button>
-        {% endif %}
+        <label>
+          STDOUT Tail
+          <textarea id="job-{{ job.id }}-stdout" class="mono medium" readonly data-job-stdout>{{ job.stdout }}</textarea>
+        </label>
+        <button type="button" class="secondary small copy-target" data-target="job-{{ job.id }}-stdout">Copy STDOUT</button>
+        <label>
+          STDERR Tail
+          <textarea id="job-{{ job.id }}-stderr" class="mono medium" readonly data-job-stderr>{{ job.stderr }}</textarea>
+        </label>
+        <button type="button" class="secondary small copy-target" data-target="job-{{ job.id }}-stderr">Copy STDERR</button>
       </article>
     {% endfor %}
   {% else %}

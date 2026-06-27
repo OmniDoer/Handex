@@ -268,3 +268,7 @@ def get_job_display(job_id: int, *, max_chars: int = 12000) -> dict[str, Any]:
 
 def list_project_job_displays(project_id: int, *, limit: int = 20, max_chars: int = 8000) -> list[dict[str, Any]]:
     return [display_job(job, max_chars=max_chars) for job in list_background_jobs(project_id, limit=limit)]
+
+
+def job_sse_message(job: dict[str, Any]) -> str:
+    return f"event: job\ndata: {json.dumps(job, ensure_ascii=False)}\n\n"

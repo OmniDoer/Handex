@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile, status
-from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -33,7 +34,7 @@ from .db import (
     update_project,
 )
 from .history import sanitize_log_for_display
-from .jobs import get_job_display, list_project_job_displays, stop_job
+from .jobs import get_job_display, job_sse_message, list_project_job_displays, stop_job
 from .parser import parse_llm_reply
 from .plugins import list_plugins
 from .prompts import (
@@ -355,6 +356,31 @@ def stop_project_job_route(project_id: int, job_id: int, _: None = Depends(requi
     stop_job(job_id)
     add_log(project_id, "background_job.stop", stdout=f"Stopped background job #{job_id}")
     return redirect(f"/projects/{project_id}#jobs")
+
+
+@app.get("/projects/{project_id}/jobs/{job_id}/events")
+def project_job_events(project_id: int, job_id: int, _: None = Depends(require_auth)) -> StreamingResponse:
+    project_or_404(project_id)
+    first_job = get_job_display(job_id, max_chars=8000)
+    if int(first_job.get("project_id") or 0) != project_id:
+        raise HTTPException(status_code=404, detail="Background job not found")
+
+    async def event_stream():
+        terminal = {"completed", "failed", "stopped", "lost"}
+        for _ in range(600):
+            job = get_job_display(job_id, max_chars=8000)
+            if int(job.get("project_id") or 0) != project_id:
+                break
+            yield job_sse_message(job)
+            if str(job.get("status") or "") in terminal:
+                break
+            await asyncio.sleep(1)
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.post("/projects/{project_id}/bootstrap/git")

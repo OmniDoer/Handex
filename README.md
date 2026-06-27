@@ -431,8 +431,9 @@ Stop a job with:
 ```
 
 The project page also has a Background Jobs section with status, output tails,
-and stop controls. Output shown through the UI and tools is redacted
-heuristically, but commands should still avoid printing raw secrets.
+stop controls, and SSE live updates while a job is running. Output shown
+through the UI and tools is redacted heuristically, but commands should still
+avoid printing raw secrets.
 
 ## Continuation Transcript
 
@@ -571,6 +572,5 @@ handex/
 ## Future Roadmap
 
 - Per-project auth roles
-- SSE live output updates for background jobs
 - Nginx optional TLS reverse proxy
 - Offline read-only project cache
