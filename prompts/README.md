@@ -21,6 +21,11 @@ manual coding agent through Handex without relying on Codex, OmniDoer, or a
 model API. The prompt asks the LLM to produce at most one next Tool Command per
 turn so Handex remains a reviewed copy/paste agent loop.
 
+The Single-Step Agent Prompt also includes the current project plan. The LLM can
+replace that plan through `update_plan` and inspect it through `plan_status`,
+mirroring Codex's visible multi-step planning loop without requiring an API
+session.
+
 The context snapshot is also exposed separately on the project page and through
 the `context_pack` tool, so the LLM can refresh orientation without spending
 several turns on `pwd`, `git status`, `ls`, and inherited `AGENTS.md` reads.

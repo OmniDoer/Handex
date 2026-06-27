@@ -4,6 +4,7 @@ import json
 from typing import Any
 
 from .context import redact_text
+from .plans import plan_markdown
 
 
 def compact(value: str, limit: int) -> str:
@@ -55,6 +56,7 @@ def build_project_transcript(
     summaries: list[dict[str, Any]],
     logs: list[dict[str, Any]],
     context_pack: str = "",
+    project_plan: dict[str, Any] | None = None,
     *,
     max_chars: int = 24000,
 ) -> str:
@@ -90,6 +92,9 @@ def build_project_transcript(
         "",
         "## Project State",
         clean(project.get("project_state") or "No project state recorded.", 5000),
+        "",
+        "## Current Plan",
+        clean(plan_markdown(project_plan or {}), 5000),
     ]
     if context_pack:
         sections.extend(["", "## Workspace Context Snapshot", clean(context_pack, 8000)])

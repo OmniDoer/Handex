@@ -18,8 +18,10 @@ from ..bootstrap import BootstrapError, bootstrap_workspace_from_git, redacted_r
 from ..capabilities import configured_capability_report, list_skills, list_vault_metadata, read_skill, skill_pack_prompt
 from ..config import settings
 from ..context import build_context_pack
+from ..db import get_project_plan, save_project_plan
 from ..history import project_logs_for_workspace
 from ..jobs import get_job_display, list_project_job_displays, project_id_for_workspace, start_background_shell, stop_job
+from ..plans import normalize_plan_payload, plan_form_json
 from ..plugins import find_plugin, list_plugins, plugin_argv
 from ..prompts import TOOL_SCHEMA
 from ..uploads import list_workspace_uploads
@@ -279,8 +281,13 @@ def preview_command(command: dict[str, Any]) -> str:
         return f"{tool} {args.get('path') or args.get('root') or '.'}"
     if tool == "read_skill":
         return f"read_skill {args.get('skill_id') or args.get('name') or ''}"
-    if tool in {"list_skills", "skill_pack", "list_vault_credentials", "vault_list", "capability_report", "context_pack", "list_uploads", "recent_results", "job_status", "plugin_list"}:
+    if tool in {"list_skills", "skill_pack", "list_vault_credentials", "vault_list", "capability_report", "context_pack", "list_uploads", "recent_results", "job_status", "plugin_list", "plan_status"}:
         return tool
+    if tool == "update_plan":
+        args = command_args(command)
+        plan = args.get("plan") or args.get("items") or []
+        count = len(plan) if isinstance(plan, list) else 0
+        return f"update_plan {count} item(s)"
     if tool == "job_stop":
         return f"job_stop {args.get('job_id') or args.get('id') or ''}"
     if tool == "plugin_run":
@@ -782,6 +789,22 @@ def run_recent_results(command: dict[str, Any], workspace: Path, mode: str) -> T
     return ToolResult("recent_results", command, mode, str(workspace), "recent_results", 0, output + "\n", "")
 
 
+def run_update_plan(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    args = command_args(command)
+    payload: Any = args if ("plan" in args or "items" in args or "explanation" in args) else command
+    explanation, items = normalize_plan_payload(payload)
+    project_id = project_id_for_workspace(workspace)
+    save_project_plan(project_id, explanation, items)
+    output = plan_form_json(get_project_plan(project_id))
+    return ToolResult("update_plan", command, mode, str(workspace), "update_plan", 0, output + "\n", "")
+
+
+def run_plan_status(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    project_id = project_id_for_workspace(workspace)
+    output = plan_form_json(get_project_plan(project_id))
+    return ToolResult("plan_status", command, mode, str(workspace), "plan_status", 0, output + "\n", "")
+
+
 def ensure_job_belongs_to_workspace(job: dict[str, Any], workspace: Path) -> None:
     project_id = project_id_for_workspace(workspace)
     if int(job.get("project_id") or 0) != project_id:
@@ -916,6 +939,8 @@ registry.register("capability_report", run_capability_report)
 registry.register("context_pack", run_context_pack)
 registry.register("list_uploads", run_list_uploads)
 registry.register("recent_results", run_recent_results)
+registry.register("update_plan", run_update_plan)
+registry.register("plan_status", run_plan_status)
 registry.register("job_status", run_job_status)
 registry.register("job_stop", run_job_stop)
 registry.register("plugin_list", run_plugin_list)

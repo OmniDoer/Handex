@@ -27,6 +27,37 @@
   </form>
 </section>
 
+<section class="section-block compact" id="plan">
+  <div class="section-title">
+    <h2>Project Plan</h2>
+    {% if project_plan.updated_at %}
+      <span>{{ project_plan.updated_at }}</span>
+    {% endif %}
+  </div>
+  {% if project_plan.explanation %}
+    <p>{{ project_plan.explanation }}</p>
+  {% endif %}
+  {% if project_plan_items %}
+    <ol class="plan-list">
+      {% for item in project_plan_items %}
+        <li class="plan-item {{ item.status }}">
+          <span class="plan-status">{{ item.status|replace("_", " ")|upper }}</span>
+          <span>{{ item.step }}</span>
+        </li>
+      {% endfor %}
+    </ol>
+  {% else %}
+    <p class="empty">No active plan yet.</p>
+  {% endif %}
+  <form class="stack" method="post" action="/projects/{{ project.id }}/plan">
+    <label>
+      Plan JSON
+      <textarea name="plan_json" class="mono medium">{{ project_plan_json }}</textarea>
+    </label>
+    <button type="submit">Save Plan</button>
+  </form>
+</section>
+
 <section class="section-block" id="launch">
   <div class="section-title">
     <h2>Launch Prompt</h2>

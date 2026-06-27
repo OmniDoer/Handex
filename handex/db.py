@@ -97,6 +97,21 @@ def init_db() -> None:
                 updated_at TEXT NOT NULL,
                 completed_at TEXT NOT NULL DEFAULT ''
             );
+
+            CREATE TABLE IF NOT EXISTS project_plans (
+                project_id INTEGER PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+                explanation TEXT NOT NULL DEFAULT '',
+                updated_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS project_plan_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                position INTEGER NOT NULL,
+                step TEXT NOT NULL,
+                status TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
             """
         )
 
@@ -356,6 +371,55 @@ def list_background_jobs(project_id: int, limit: int = 20) -> list[dict[str, Any
             (project_id, limit),
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+def save_project_plan(project_id: int, explanation: str, items: list[dict[str, Any]]) -> None:
+    timestamp = now_iso()
+    with connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO project_plans (project_id, explanation, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(project_id) DO UPDATE SET
+                explanation = excluded.explanation,
+                updated_at = excluded.updated_at
+            """,
+            (project_id, explanation, timestamp),
+        )
+        conn.execute("DELETE FROM project_plan_items WHERE project_id = ?", (project_id,))
+        conn.executemany(
+            """
+            INSERT INTO project_plan_items (project_id, position, step, status, updated_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    project_id,
+                    index,
+                    str(item.get("step") or ""),
+                    str(item.get("status") or "pending"),
+                    timestamp,
+                )
+                for index, item in enumerate(items, start=1)
+            ],
+        )
+
+
+def get_project_plan(project_id: int) -> dict[str, Any]:
+    with connect() as conn:
+        plan_row = conn.execute("SELECT * FROM project_plans WHERE project_id = ?", (project_id,)).fetchone()
+        item_rows = conn.execute(
+            """
+            SELECT position, step, status, updated_at
+            FROM project_plan_items
+            WHERE project_id = ?
+            ORDER BY position ASC, id ASC
+            """,
+            (project_id,),
+        ).fetchall()
+    plan = dict(plan_row) if plan_row else {"project_id": project_id, "explanation": "", "updated_at": ""}
+    plan["items"] = [dict(row) for row in item_rows]
+    return plan
 
 
 def create_vault_item(data: dict[str, Any]) -> int:

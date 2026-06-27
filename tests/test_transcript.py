@@ -34,10 +34,13 @@ class TranscriptTests(unittest.TestCase):
             }
         ]
 
-        transcript = build_project_transcript(project, summaries, logs, "Context here", max_chars=12000)
+        plan = {"explanation": "Working", "items": [{"step": "Patch pending", "status": "in_progress"}]}
+
+        transcript = build_project_transcript(project, summaries, logs, "Context here", plan, max_chars=12000)
 
         self.assertIn("Handex Continuation Transcript", transcript)
         self.assertIn("Keep moving.", transcript)
+        self.assertIn("Patch pending", transcript)
         self.assertIn("Earlier summary.", transcript)
         self.assertIn("tool.execute", transcript)
         self.assertIn("Context here", transcript)

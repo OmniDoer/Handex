@@ -43,6 +43,7 @@ Each project stores:
 - Description
 - Goal
 - Project state
+- Current plan
 - Current summary
 - Prompt template
 - Tool protocol
@@ -99,6 +100,8 @@ Built-in tools:
 - `context_pack`
 - `list_uploads`
 - `recent_results`
+- `update_plan`
+- `plan_status`
 - `job_status`
 - `job_stop`
 - `plugin_list`
@@ -145,6 +148,11 @@ workspace, including command JSON, final command, stdout, stderr, and optionally
 the full Tool Result Prompt. This is useful when a browser refresh, missed copy,
 or model switch interrupts the manual loop.
 
+`update_plan` replaces the current visible project plan with reviewed steps and
+statuses (`pending`, `in_progress`, or `completed`). `plan_status` returns the
+same plan as JSON. This mirrors the Codex planning surface for multi-step work
+while keeping plan changes durable inside the Handex project.
+
 `background_shell` starts a reviewed shell command in the background and returns
 a job id immediately. `job_status` polls the job status plus redacted stdout and
 stderr tails; `job_stop` terminates a running job. Use this for tests, builds,
@@ -185,6 +193,7 @@ LLM how to behave like a coding agent inside the Hand Loop:
 - inspect user-provided files through `list_uploads` and `read_file`
 - recover missed Tool Result text through `recent_results` or the project
   Execution History section
+- keep a visible multi-step plan through `update_plan` and `plan_status`
 - run long commands through `background_shell`, then poll or stop them with
   `job_status` and `job_stop`
 - use skills by asking Handex to list/read configured `SKILL.md` files
@@ -206,7 +215,8 @@ The migration target is muscle-memory compatibility:
 - review the same surface Codex would have reviewed internally: JSON, command,
   cwd, mode, diff preview, stdout, stderr, and result prompt
 - use familiar tools: `shell`, `python`, `git`, `apply_patch`, file tools,
-  `context_pack`, skills, plugins, and vault-backed command execution
+  `context_pack`, `update_plan`, skills, plugins, and vault-backed command
+  execution
 - keep working one step at a time until the Summary is updated
 
 The only new habit is moving text between the web LLM and Handex.
@@ -393,6 +403,27 @@ return only valid JSON that matches the Tool Command schema.
 The project page provides a Summary Prompt. The user copies it to the web LLM,
 pastes the returned Summary into Handex, and saves it. Handex records every
 saved Summary as history and supports rollback.
+
+## Project Plan
+
+Handex projects have a current plan separate from summaries and logs. The plan
+is visible near the top of the project page, included in the Codex-style prompt
+and Continuation Transcript, and exported in redacted project snapshots.
+
+The web LLM can update it through:
+
+```json
+{"tool":"update_plan","args":{"explanation":"Working through the implementation.","plan":[{"step":"Inspect current code","status":"completed"},{"step":"Patch focused files","status":"in_progress"},{"step":"Run tests","status":"pending"}]},"mode":"safe","reason":"publish the current working plan"}
+```
+
+Read it back with:
+
+```json
+{"tool":"plan_status","args":{},"mode":"safe","reason":"read the current project plan"}
+```
+
+Plan statuses are `pending`, `in_progress`, and `completed`; Handex accepts at
+most one `in_progress` item.
 
 ## Execution History
 

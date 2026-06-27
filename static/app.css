@@ -345,6 +345,45 @@ details.section-block > summary {
   font-size: 13px;
 }
 
+.plan-list {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 0;
+  list-style: none;
+}
+
+.plan-item {
+  display: grid;
+  grid-template-columns: minmax(112px, auto) 1fr;
+  align-items: start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.plan-status {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.plan-item.in_progress .plan-status {
+  border-color: #fbd38d;
+  color: var(--amber);
+}
+
+.plan-item.completed .plan-status {
+  border-color: #9ae6b4;
+  color: #276749;
+}
+
 .upload-form {
   margin: 12px 0 18px;
 }

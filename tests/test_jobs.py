@@ -62,16 +62,19 @@ class JobTests(unittest.TestCase):
             db.create_project({"name": "Jobs", "workspace_path": str(workspace), "mode": "safe"})
 
             result = registry.run(
-                {"tool": "background_shell", "args": {"command": "printf before; sleep 10; printf after"}},
+                {"tool": "background_shell", "args": {"command": "python3 -c 'import time; print(\"before\", flush=True); time.sleep(10); print(\"after\")'"}},
                 str(workspace),
                 "safe",
             )
             job_id = json.loads(result.stdout)["id"]
-            for _ in range(20):
+            saw_before = False
+            for _ in range(50):
                 status_result = registry.run({"tool": "job_status", "args": {"job_id": job_id}}, str(workspace), "safe")
-                if "before" in status_result.stdout:
+                if "before" in json.loads(status_result.stdout)["stdout"]:
+                    saw_before = True
                     break
                 time.sleep(0.1)
+            self.assertTrue(saw_before)
             stopped = registry.run({"tool": "job_stop", "args": {"job_id": job_id}}, str(workspace), "safe")
 
             status = json.loads(stopped.stdout)

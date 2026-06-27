@@ -9,6 +9,7 @@ from . import __version__
 from .bootstrap import redacted_repo_url
 from .capabilities import skill_pack_prompt
 from .context import build_context_pack, redact_text
+from .plans import plan_markdown
 from .plugins import plugin_catalog_prompt
 from .uploads import upload_inventory_prompt
 
@@ -38,6 +39,8 @@ TOOL_NAMES = [
     "context_pack",
     "list_uploads",
     "recent_results",
+    "update_plan",
+    "plan_status",
     "job_status",
     "job_stop",
     "plugin_list",
@@ -93,7 +96,7 @@ DEFAULT_TOOL_PROTOCOL = """When you need Linux tools, output exactly one Tool Co
 
 Schema:
 {
-  "tool": "shell | background_shell | python | read_file | write_file | append_file | replace_file | delete_file | list_files | search_files | grep | git | git_bootstrap | apply_patch | list_skills | read_skill | skill_pack | list_vault_credentials | vault_list | vault_run | capability_report | context_pack | list_uploads | recent_results | job_status | job_stop | plugin_list | plugin_run",
+  "tool": "shell | background_shell | python | read_file | write_file | append_file | replace_file | delete_file | list_files | search_files | grep | git | git_bootstrap | apply_patch | list_skills | read_skill | skill_pack | list_vault_credentials | vault_list | vault_run | capability_report | context_pack | list_uploads | recent_results | update_plan | plan_status | job_status | job_stop | plugin_list | plugin_run",
   "args": {},
   "cwd": ".",
   "mode": "safe",
@@ -119,6 +122,8 @@ Examples:
 {"tool":"context_pack","args":{},"cwd":".","mode":"safe","reason":"inspect Git status, inherited AGENTS.md, manifests, and file tree"}
 {"tool":"list_uploads","args":{},"mode":"safe","reason":"inspect user-uploaded workspace files"}
 {"tool":"recent_results","args":{"limit":5,"include_result_prompt":true},"mode":"safe","reason":"recover recent execution results"}
+{"tool":"update_plan","args":{"explanation":"Working through the implementation.","plan":[{"step":"Inspect current code","status":"completed"},{"step":"Patch focused files","status":"in_progress"},{"step":"Run tests","status":"pending"}]},"mode":"safe","reason":"publish the current working plan"}
+{"tool":"plan_status","args":{},"mode":"safe","reason":"read the current project plan"}
 {"tool":"plugin_list","args":{},"mode":"safe","reason":"inspect configured Handex command plugins"}
 {"tool":"plugin_run","args":{"plugin_id":"example","input":{}},"cwd":".","mode":"safe","reason":"run a configured command plugin"}
 
@@ -188,6 +193,9 @@ Project:
 - Summary: {current_summary}
 - State: {project_state}
 
+Current Plan:
+{current_plan}
+
 Operating rules:
 - Read the codebase before making implementation claims.
 - Use small, reviewable Tool Commands.
@@ -201,6 +209,7 @@ Operating rules:
 - Use context_pack for Codex-style workspace orientation when Git status, inherited AGENTS.md rules, manifests, or the file tree may matter.
 - Use list_uploads and read_file for user-uploaded files under .handex_uploads/.
 - Use recent_results when prior Tool Result text is needed to continue after a browser refresh or missed copy.
+- Use update_plan to keep a visible project plan current when work has multiple steps; keep at most one item in_progress.
 - Use plugin_list before plugin_run; only run configured plugins that directly apply to the task.
 - Use apply_patch for focused code edits when a unified diff is clearer than write_file/replace_file.
 - After durable progress, update the Summary.
@@ -248,7 +257,7 @@ def build_start_prompt(project: dict[str, Any]) -> str:
         return DEFAULT_PROMPT_TEMPLATE.format(**values).strip()
 
 
-def build_agent_fallback_prompt(project: dict[str, Any]) -> str:
+def build_agent_fallback_prompt(project: dict[str, Any], project_plan: dict[str, Any] | None = None) -> str:
     try:
         workspace_context = build_context_pack(project.get("workspace_path") or ".", max_chars=10000)
     except Exception as exc:
@@ -259,6 +268,7 @@ def build_agent_fallback_prompt(project: dict[str, Any]) -> str:
         current_goal=compact(project.get("goal") or "No current goal set."),
         current_summary=compact(project.get("current_summary") or "No summary yet."),
         project_state=compact(project.get("project_state") or "No project state recorded."),
+        current_plan=compact(plan_markdown(project_plan or {}), 4000),
         tool_protocol=compact(project.get("tool_protocol") or DEFAULT_TOOL_PROTOCOL, 8000),
         skill_pack=compact(skill_pack_prompt(), 10000),
         plugin_pack=compact(plugin_catalog_prompt(), 8000),

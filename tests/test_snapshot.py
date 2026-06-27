@@ -34,11 +34,17 @@ class SnapshotTests(unittest.TestCase):
             }
         ]
 
-        snapshot = build_project_snapshot(project, [], logs, "context")
+        plan = {
+            "explanation": "Plan token: must-not-leak",
+            "items": [{"step": "Run tests", "status": "in_progress"}],
+        }
+
+        snapshot = build_project_snapshot(project, [], logs, "context", plan)
         dumped = dumps_snapshot(snapshot)
 
         self.assertNotIn("must-not-leak", dumped)
         self.assertIn("[REDACTED]", dumped)
+        self.assertEqual(snapshot["plan"]["plan"][0]["step"], "Run tests")
         self.assertFalse(snapshot["vault"]["included"])
         self.assertNotIn("secret_encrypted", dumped)
 

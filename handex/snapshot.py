@@ -5,6 +5,7 @@ from typing import Any
 
 from . import __version__
 from .context import redact_text
+from .plans import serializable_plan
 
 
 SNAPSHOT_VERSION = 1
@@ -61,12 +62,14 @@ def build_project_snapshot(
     summaries: list[dict[str, Any]],
     logs: list[dict[str, Any]],
     context_pack: str = "",
+    project_plan: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "schema": "handex.project_snapshot",
         "version": SNAPSHOT_VERSION,
         "handex_version": __version__,
         "project": snapshot_project(project),
+        "plan": serializable_plan(project_plan or {}),
         "summaries": [snapshot_summary(summary) for summary in summaries],
         "logs": [snapshot_log(log) for log in logs],
         "context_pack": clean(context_pack),

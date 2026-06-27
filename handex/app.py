@@ -23,6 +23,7 @@ from .db import (
     delete_project,
     ensure_workspace,
     get_project,
+    get_project_plan,
     get_summary,
     import_summary,
     init_db,
@@ -30,12 +31,14 @@ from .db import (
     list_projects,
     list_summaries,
     save_summary,
+    save_project_plan,
     update_project_goal,
     update_project,
 )
 from .history import sanitize_log_for_display
 from .jobs import get_job_display, job_sse_message, list_project_job_displays, stop_job
 from .parser import parse_llm_reply
+from .plans import PlanError, normalize_plan_payload, plan_form_json
 from .plugins import list_plugins
 from .prompts import (
     DEFAULT_PROMPT_TEMPLATE,
@@ -128,13 +131,17 @@ def project_page_context(project: dict[str, Any], **extra: Any) -> dict[str, Any
     context_pack = build_context_pack(project.get("workspace_path") or ".", max_chars=12000)
     summaries = list_summaries(int(project["id"]))
     logs = [sanitize_log_for_display(log) for log in list_logs(int(project["id"]))]
+    project_plan = get_project_plan(int(project["id"]))
     context = {
         "project": project,
         "start_prompt": build_start_prompt(project),
-        "agent_prompt": build_agent_fallback_prompt(project),
+        "agent_prompt": build_agent_fallback_prompt(project, project_plan),
         "context_pack": context_pack,
-        "transcript_prompt": build_project_transcript(project, summaries, logs, context_pack, max_chars=24000),
+        "transcript_prompt": build_project_transcript(project, summaries, logs, context_pack, project_plan, max_chars=24000),
         "summary_prompt": build_summary_prompt(project),
+        "project_plan": project_plan,
+        "project_plan_items": project_plan.get("items", []),
+        "project_plan_json": plan_form_json(project_plan),
         "uploads": list_workspace_uploads(project.get("workspace_path") or "."),
         "max_upload_bytes": settings.max_upload_bytes,
         "summaries": summaries,
@@ -265,6 +272,13 @@ def import_project_route(
             result_prompt=str(log.get("result_prompt") or ""),
             created_at=str(log.get("created_at") or ""),
         )
+    plan = snapshot.get("plan")
+    if isinstance(plan, dict):
+        try:
+            explanation, items = normalize_plan_payload(plan)
+            save_project_plan(project_id, explanation, items)
+        except PlanError:
+            pass
     add_log(project_id, "snapshot.import", stdout="Imported Handex project snapshot.")
     return redirect(f"/projects/{project_id}")
 
@@ -280,7 +294,7 @@ def project_page(request: Request, project_id: int, _: None = Depends(require_au
 def export_project_route(project_id: int, _: None = Depends(require_auth)) -> Response:
     project = project_or_404(project_id)
     context_pack = build_context_pack(project.get("workspace_path") or ".", max_chars=12000)
-    snapshot = build_project_snapshot(project, list_summaries(project_id), list_logs(project_id, limit=200), context_pack)
+    snapshot = build_project_snapshot(project, list_summaries(project_id), list_logs(project_id, limit=200), context_pack, get_project_plan(project_id))
     filename = f"handex-{slugify(str(project.get('name') or 'project'))}-snapshot.json"
     return Response(
         dumps_snapshot(snapshot),
@@ -335,6 +349,23 @@ def save_project_goal(
     update_project_goal(project_id, goal)
     add_log(project_id, "project.goal.update", stdout=goal)
     return redirect(f"/projects/{project_id}#goal")
+
+
+@app.post("/projects/{project_id}/plan")
+def save_project_plan_route(
+    project_id: int,
+    plan_json: Annotated[str, Form()] = "",
+    _: None = Depends(require_auth),
+) -> RedirectResponse:
+    project_or_404(project_id)
+    try:
+        explanation, items = normalize_plan_payload(plan_json or {"plan": []})
+    except PlanError as exc:
+        add_log(project_id, "project.plan.error", stderr=str(exc))
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    save_project_plan(project_id, explanation, items)
+    add_log(project_id, "project.plan.update", stdout=plan_form_json(get_project_plan(project_id)))
+    return redirect(f"/projects/{project_id}#plan")
 
 
 @app.post("/projects/{project_id}/delete")
@@ -478,7 +509,7 @@ def summary_prompt(project_id: int, _: None = Depends(require_auth)) -> str:
 
 @app.get("/projects/{project_id}/prompt/agent", response_class=PlainTextResponse)
 def agent_prompt(project_id: int, _: None = Depends(require_auth)) -> str:
-    return build_agent_fallback_prompt(project_or_404(project_id))
+    return build_agent_fallback_prompt(project_or_404(project_id), get_project_plan(project_id))
 
 
 @app.get("/projects/{project_id}/prompt/context", response_class=PlainTextResponse)
@@ -491,7 +522,7 @@ def context_prompt(project_id: int, _: None = Depends(require_auth)) -> str:
 def transcript_prompt(project_id: int, _: None = Depends(require_auth)) -> str:
     project = project_or_404(project_id)
     context_pack = build_context_pack(project.get("workspace_path") or ".", max_chars=12000)
-    return build_project_transcript(project, list_summaries(project_id), list_logs(project_id, limit=80), context_pack, max_chars=32000)
+    return build_project_transcript(project, list_summaries(project_id), list_logs(project_id, limit=80), context_pack, get_project_plan(project_id), max_chars=32000)
 
 
 @app.post("/projects/{project_id}/parse", response_class=HTMLResponse)
