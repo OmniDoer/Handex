@@ -60,7 +60,7 @@
 </section>
 
 <details class="section-block" id="capabilities">
-  <summary>Skills And Vault</summary>
+  <summary>Skills, Plugins And Vault</summary>
   <div class="section-title inner">
     <h2>Skills</h2>
     <span>{{ skills|length }} found</span>
@@ -78,6 +78,29 @@
     {% endfor %}
   {% else %}
     <p class="empty">No skills configured. Set HANDEX_SKILL_ROOTS to directories containing SKILL.md files.</p>
+  {% endif %}
+
+  <div class="section-title inner">
+    <h2>Plugins</h2>
+    <span>{{ plugins|length }} found</span>
+  </div>
+  {% if plugins %}
+    {% for plugin in plugins %}
+      <article class="history-item">
+        <div class="command-meta">
+          <strong>{{ plugin.name }}</strong>
+          <span>{{ plugin.plugin_id }}</span>
+        </div>
+        <p>{{ plugin.description or "No description." }}</p>
+        <dl class="preview-grid">
+          <div><dt>Mode</dt><dd>{{ "SAFE" if plugin.safe else "YOLO ONLY" }}</dd></div>
+          <div><dt>Timeout</dt><dd>{{ plugin.timeout }}s</dd></div>
+          <div><dt>Root</dt><dd>{{ plugin.root }}</dd></div>
+        </dl>
+      </article>
+    {% endfor %}
+  {% else %}
+    <p class="empty">No plugins configured. Set HANDEX_PLUGIN_ROOTS to directories containing plugin.json files.</p>
   {% endif %}
 
   <div class="section-title inner">

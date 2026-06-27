@@ -180,6 +180,13 @@ def configured_capability_report() -> str:
     else:
         sections.append("- none")
     sections.append("")
+    sections.append("## Plugin Roots")
+    plugin_roots = getattr(settings, "plugin_roots", [])
+    if plugin_roots:
+        sections.extend(f"- {root}" for root in plugin_roots)
+    else:
+        sections.append("- none")
+    sections.append("")
     sections.append("## Vault Metadata Provider")
     sections.append("- configured" if settings.vault_metadata_command else "- not configured")
     sections.append("")

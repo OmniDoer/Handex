@@ -32,6 +32,7 @@ from .db import (
     update_project,
 )
 from .parser import parse_llm_reply
+from .plugins import list_plugins
 from .prompts import (
     DEFAULT_PROMPT_TEMPLATE,
     DEFAULT_TOOL_PROTOCOL,
@@ -113,6 +114,7 @@ def project_page_context(project: dict[str, Any], **extra: Any) -> dict[str, Any
         "summaries": summaries,
         "logs": logs,
         "skills": list_skills(),
+        "plugins": list_plugins(),
         "vault_credentials": vault_credentials,
         "vault_error": vault_error,
         "handex_vault_enabled": vault_enabled(),

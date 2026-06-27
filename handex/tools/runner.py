@@ -17,6 +17,7 @@ from typing import Any, Callable
 from ..capabilities import configured_capability_report, list_skills, list_vault_metadata, read_skill, skill_pack_prompt
 from ..config import settings
 from ..context import build_context_pack
+from ..plugins import find_plugin, list_plugins, plugin_argv
 from ..prompts import TOOL_SCHEMA
 from ..vault import decrypt_item_secret, metadata_for_tools
 
@@ -270,8 +271,10 @@ def preview_command(command: dict[str, Any]) -> str:
         return f"{tool} {args.get('path') or args.get('root') or '.'}"
     if tool == "read_skill":
         return f"read_skill {args.get('skill_id') or args.get('name') or ''}"
-    if tool in {"list_skills", "skill_pack", "list_vault_credentials", "vault_list", "capability_report", "context_pack"}:
+    if tool in {"list_skills", "skill_pack", "list_vault_credentials", "vault_list", "capability_report", "context_pack", "plugin_list"}:
         return tool
+    if tool == "plugin_run":
+        return f"plugin_run {args.get('plugin_id') or args.get('id') or args.get('name') or ''}"
     if tool == "vault_run":
         return str(args.get("command") or "")
     return tool
@@ -288,10 +291,15 @@ def subprocess_result(
     shell: bool = False,
     extra_env: dict[str, str] | None = None,
     redact_values: list[str] | None = None,
+    input_text: str | None = None,
+    inherit_env: bool = True,
 ) -> ToolResult:
     env = None
     if extra_env:
-        env = os.environ.copy()
+        if inherit_env:
+            env = os.environ.copy()
+        else:
+            env = {key: value for key, value in os.environ.items() if key in {"PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "TZ"}}
         env.update(extra_env)
     try:
         completed = subprocess.run(
@@ -299,6 +307,7 @@ def subprocess_result(
             shell=shell,
             cwd=str(cwd),
             text=True,
+            input=input_text,
             capture_output=True,
             timeout=timeout_for(command, mode),
             executable="/bin/bash" if shell else None,
@@ -681,6 +690,67 @@ def run_context_pack(command: dict[str, Any], workspace: Path, mode: str) -> Too
     return ToolResult("context_pack", command, mode, str(cwd), "context_pack", 0, clamp_output(output) + "\n", "")
 
 
+def run_plugin_list(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    output = json.dumps(
+        [
+            {
+                "plugin_id": plugin.plugin_id,
+                "name": plugin.name,
+                "description": plugin.description,
+                "safe": plugin.safe,
+                "timeout": plugin.timeout,
+                "root": plugin.root,
+            }
+            for plugin in list_plugins()
+        ],
+        ensure_ascii=False,
+        indent=2,
+    )
+    return ToolResult("plugin_list", command, mode, str(workspace), "plugin_list", 0, output + "\n", "")
+
+
+def run_plugin_run(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    args = command_args(command)
+    identifier = str(args.get("plugin_id") or args.get("id") or args.get("name") or "")
+    if not identifier:
+        raise ToolError("plugin_run args.plugin_id is required")
+    try:
+        plugin = find_plugin(identifier)
+    except KeyError as exc:
+        raise ToolError(str(exc)) from exc
+    if mode == "safe" and not plugin.safe:
+        raise ToolError("Safe Mode only runs plugins whose manifest sets safe=true. Use YOLO Mode after review.")
+    cwd = resolve_cwd(command, workspace, mode)
+    payload = args.get("input")
+    if payload is None:
+        payload = {key: value for key, value in args.items() if key not in {"plugin_id", "id", "name", "timeout"}}
+    payload_text = json.dumps(payload, ensure_ascii=False)
+    try:
+        requested_timeout = int(args.get("timeout") or command.get("timeout") or plugin.timeout)
+    except (TypeError, ValueError):
+        requested_timeout = plugin.timeout
+    timeout = max(1, min(requested_timeout, 900 if mode == "yolo" else 180))
+    argv = plugin_argv(plugin)
+    final_command = " ".join(shlex.quote(item) for item in argv)
+    plugin_command = {**command, "timeout": timeout}
+    return subprocess_result(
+        command=plugin_command,
+        tool="plugin_run",
+        mode=mode,
+        cwd=cwd,
+        final_command=final_command,
+        argv=argv,
+        extra_env={
+            "HANDEX_PLUGIN_ID": plugin.plugin_id,
+            "HANDEX_PLUGIN_ARGS": payload_text,
+            "HANDEX_WORKSPACE": str(workspace),
+            "HANDEX_MODE": mode,
+        },
+        input_text=payload_text,
+        inherit_env=False,
+    )
+
+
 registry = ToolRegistry()
 registry.register("shell", run_shell)
 registry.register("python", run_python)
@@ -702,3 +772,5 @@ registry.register("vault_list", run_vault_list)
 registry.register("vault_run", run_vault_run)
 registry.register("capability_report", run_capability_report)
 registry.register("context_pack", run_context_pack)
+registry.register("plugin_list", run_plugin_list)
+registry.register("plugin_run", run_plugin_run)

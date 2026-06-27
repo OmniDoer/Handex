@@ -7,6 +7,7 @@ from typing import Any
 from . import __version__
 from .capabilities import skill_pack_prompt
 from .context import build_context_pack
+from .plugins import plugin_catalog_prompt
 
 
 TOOL_NAMES = [
@@ -30,6 +31,8 @@ TOOL_NAMES = [
     "vault_run",
     "capability_report",
     "context_pack",
+    "plugin_list",
+    "plugin_run",
 ]
 
 
@@ -53,7 +56,7 @@ DEFAULT_TOOL_PROTOCOL = """When you need Linux tools, output exactly one Tool Co
 
 Schema:
 {
-  "tool": "shell | python | read_file | write_file | append_file | replace_file | delete_file | list_files | search_files | grep | git | apply_patch | list_skills | read_skill | skill_pack | list_vault_credentials | vault_list | vault_run | capability_report | context_pack",
+  "tool": "shell | python | read_file | write_file | append_file | replace_file | delete_file | list_files | search_files | grep | git | apply_patch | list_skills | read_skill | skill_pack | list_vault_credentials | vault_list | vault_run | capability_report | context_pack | plugin_list | plugin_run",
   "args": {},
   "cwd": ".",
   "mode": "safe",
@@ -73,6 +76,8 @@ Examples:
 {"tool":"vault_run","args":{"credential_id":"handex:1","env":"HANDEX_SECRET","command":"printf ready"},"cwd":".","mode":"safe","reason":"run a command with a reviewed secret environment variable"}
 {"tool":"capability_report","args":{},"mode":"safe","reason":"inspect configured Handex skill roots and providers"}
 {"tool":"context_pack","args":{},"cwd":".","mode":"safe","reason":"inspect Git status, AGENTS.md, manifests, and file tree"}
+{"tool":"plugin_list","args":{},"mode":"safe","reason":"inspect configured Handex command plugins"}
+{"tool":"plugin_run","args":{"plugin_id":"example","input":{}},"cwd":".","mode":"safe","reason":"run a configured command plugin"}
 
 Vault rules:
 - list_vault_credentials returns metadata only: credential id, masked username, origin, kind, name, source, host.
@@ -149,6 +154,7 @@ Operating rules:
 - Keep secrets out of chat. Vault access is metadata-only unless the human explicitly runs a local Vault-backed command after review.
 - Use Handex skills by listing configured skill roots first, then reading only the relevant SKILL.md instructions.
 - Use context_pack for Codex-style workspace orientation when Git status, AGENTS.md, manifests, or the file tree may matter.
+- Use plugin_list before plugin_run; only run configured plugins that directly apply to the task.
 - Use apply_patch for focused code edits when a unified diff is clearer than write_file/replace_file.
 - After durable progress, update the Summary.
 - Do not explain Handex basics back to the user unless asked; behave like a familiar terminal coding agent whose tool calls are manually ferried.
@@ -158,6 +164,9 @@ Agent-compatible tools available through Handex:
 
 Configured skill catalog snapshot:
 {skill_pack}
+
+Configured plugin catalog snapshot:
+{plugin_pack}
 
 Initial workspace context snapshot:
 {workspace_context}
@@ -202,6 +211,7 @@ def build_agent_fallback_prompt(project: dict[str, Any]) -> str:
         project_state=compact(project.get("project_state") or "No project state recorded."),
         tool_protocol=compact(project.get("tool_protocol") or DEFAULT_TOOL_PROTOCOL, 8000),
         skill_pack=compact(skill_pack_prompt(), 10000),
+        plugin_pack=compact(plugin_catalog_prompt(), 8000),
         workspace_context=compact(workspace_context, 10000),
     ).strip()
 

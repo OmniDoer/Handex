@@ -20,6 +20,7 @@ class Settings:
     secret_key: str
     admin_password: str
     skill_roots: List[Path]
+    plugin_roots: List[Path]
     vault_metadata_command: str
     help_commands: List[Tuple[str, str]]
     vault_key: str
@@ -55,6 +56,7 @@ def load_settings() -> Settings:
     projects_dir = Path(os.environ.get("HANDEX_PROJECTS_DIR", str(BASE_DIR / "projects"))).resolve()
     logs_dir = Path(os.environ.get("HANDEX_LOGS_DIR", str(BASE_DIR / "logs"))).resolve()
     default_skill_roots = [(BASE_DIR / "skills").resolve()]
+    default_plugin_roots = [(BASE_DIR / "plugins").resolve()]
     return Settings(
         base_dir=BASE_DIR,
         data_dir=data_dir,
@@ -65,6 +67,7 @@ def load_settings() -> Settings:
         secret_key=os.environ.get("HANDEX_SECRET_KEY", "dev-only-change-me"),
         admin_password=os.environ.get("HANDEX_ADMIN_PASSWORD", ""),
         skill_roots=_path_list(os.environ.get("HANDEX_SKILL_ROOTS", ""), default_skill_roots),
+        plugin_roots=_path_list(os.environ.get("HANDEX_PLUGIN_ROOTS", ""), default_plugin_roots),
         vault_metadata_command=os.environ.get("HANDEX_VAULT_METADATA_COMMAND", ""),
         help_commands=_help_commands(os.environ.get("HANDEX_HELP_COMMANDS", "")),
         vault_key=os.environ.get("HANDEX_VAULT_KEY", ""),

@@ -1,27 +1,41 @@
 # Handex Plugins
 
-Handex tool execution is registry based. Built-in tools are registered in
-`handex/tools/runner.py` and share this command shape:
+Handex command plugins are manifest-defined local tools. A plugin is any
+directory under `HANDEX_PLUGIN_ROOTS` that contains a `plugin.json` file.
+
+Example:
 
 ```json
 {
-  "tool": "shell",
-  "args": {},
-  "cwd": ".",
-  "mode": "safe",
-  "reason": "why this command is needed"
+  "id": "echo",
+  "name": "Echo",
+  "description": "Echo JSON input for diagnostics.",
+  "command": ["python3", "/opt/handex/plugins/echo/echo.py"],
+  "safe": true,
+  "timeout": 30
 }
 ```
 
-Future plugins should expose a Python callable that receives:
+The web LLM can inspect configured plugins with:
 
-- `command`: the parsed Tool Command object
-- `workspace`: the project workspace as a resolved `Path`
-- `mode`: `safe` or `yolo`
+```json
+{"tool":"plugin_list","args":{},"mode":"safe","reason":"inspect configured command plugins"}
+```
 
-The callable returns a `ToolResult`. Safe Mode plugins should keep filesystem
-effects inside the project workspace unless the user explicitly switches to
-YOLO Mode.
+It can request a plugin run with:
+
+```json
+{"tool":"plugin_run","args":{"plugin_id":"echo","input":{"message":"hello"}},"cwd":".","mode":"safe","reason":"run the echo plugin"}
+```
+
+`plugin_run` executes argv directly; it does not interpolate shell strings.
+JSON input is passed on stdin. Plugins run with a minimal process environment
+plus `HANDEX_PLUGIN_ARGS`, `HANDEX_PLUGIN_ID`, `HANDEX_WORKSPACE`, and
+`HANDEX_MODE`.
+
+Safe Mode only runs plugins whose manifest sets `"safe": true`. Plugins that
+can write outside the workspace, access secrets, call privileged services, or
+perform irreversible actions should leave `safe` false and require YOLO Mode.
 
 Secret-bearing plugins should follow the same rule as `vault_run`: never put
 raw secrets in `command_json`, `final_command`, logs, stdout, stderr, or Tool

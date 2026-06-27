@@ -34,3 +34,8 @@ When a parsed Tool Command would change files, Handex renders a read-only Diff
 Preview before execution. This preview covers `write_file`, `append_file`,
 `replace_file`, `delete_file`, and `apply_patch`, and gives the human a
 Codex-like review surface before approving the command.
+
+Configured command plugins are exposed through `plugin_list` and `plugin_run`.
+The Single-Step Agent Prompt includes a plugin catalog snapshot and instructs
+the LLM to list plugins before running one, keeping plugin execution in the
+same reviewed one-command loop as built-in tools.

@@ -94,6 +94,8 @@ Built-in tools:
 - `vault_run`
 - `capability_report`
 - `context_pack`
+- `plugin_list`
+- `plugin_run`
 
 Command schema:
 
@@ -125,6 +127,13 @@ recent commits, workspace `AGENTS.md` instructions, top-level manifests, and a
 bounded file tree. Secret-looking files are omitted from the tree, and
 secret-looking lines in instruction files are redacted before the pack is shown
 or copied to a web LLM.
+
+`plugin_list` and `plugin_run` expose configured command plugins from
+`HANDEX_PLUGIN_ROOTS`. A plugin is a directory containing `plugin.json`; it
+declares a command argv, description, timeout, and whether it is allowed in
+Safe Mode. `plugin_run` passes JSON input to the plugin through stdin and the
+`HANDEX_PLUGIN_ARGS` environment variable, so plugins do not need shell string
+interpolation.
 
 ## Single-Step Agent Mode
 
@@ -164,7 +173,7 @@ The migration target is muscle-memory compatibility:
 - review the same surface Codex would have reviewed internally: JSON, command,
   cwd, mode, diff preview, stdout, stderr, and result prompt
 - use familiar tools: `shell`, `python`, `git`, `apply_patch`, file tools,
-  `context_pack`, skills, and vault-backed command execution
+  `context_pack`, skills, plugins, and vault-backed command execution
 - keep working one step at a time until the Summary is updated
 
 The only new habit is moving text between the web LLM and Handex.
@@ -261,8 +270,42 @@ Handex to a specific agent runtime:
 HANDEX_HELP_COMMANDS='codex=codex --help;;omnidoer=omnidoer --help'
 ```
 
-The `capability_report` tool reports configured skill roots, whether a vault
-metadata provider exists, and the help output from those commands.
+The `capability_report` tool reports configured skill roots, plugin roots,
+whether a vault metadata provider exists, and the help output from those
+commands.
+
+## Command Plugins
+
+Handex can load command plugins from configured plugin roots:
+
+```sh
+HANDEX_PLUGIN_ROOTS=/opt/handex/plugins:/some/other/plugins
+```
+
+Each plugin lives in a directory with `plugin.json`:
+
+```json
+{
+  "id": "echo",
+  "name": "Echo",
+  "description": "Echo JSON input for diagnostics.",
+  "command": ["python3", "/opt/handex/plugins/echo/echo.py"],
+  "safe": true,
+  "timeout": 30
+}
+```
+
+The built-in plugin tools are:
+
+- `plugin_list`: return plugin ids, names, descriptions, safe/yolo mode, root,
+  and timeout
+- `plugin_run`: run one configured plugin with JSON input
+
+Safe Mode only runs plugins whose manifest sets `"safe": true`; other plugins
+require YOLO Mode after review. Plugins receive JSON input on stdin and run
+with a minimal process environment plus `HANDEX_PLUGIN_ARGS`,
+`HANDEX_PLUGIN_ID`, `HANDEX_WORKSPACE`, and `HANDEX_MODE`. Plugin output is
+captured into the normal Tool Result Prompt.
 
 ## JSON Correction
 
@@ -415,7 +458,6 @@ handex/
 ## Future Roadmap
 
 - Per-project auth roles
-- Richer plugin loading from `plugins/`
 - Streaming command output
 - Nginx optional TLS reverse proxy
 - Workspace Git repository bootstrap helpers
