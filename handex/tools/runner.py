@@ -20,6 +20,7 @@ from ..capabilities import configured_capability_report, list_skills, list_vault
 from ..config import settings
 from ..context import build_context_pack
 from ..db import get_project_plan, save_project_plan
+from ..files import FileAccessError, file_info_payload, resolve_workspace_file
 from ..history import project_logs_for_workspace
 from ..images import ImageError, image_info_payload, resolve_workspace_image
 from ..jobs import get_job_display, list_project_job_displays, project_id_for_workspace, start_background_shell, stop_job
@@ -61,6 +62,7 @@ SAFE_BATCH_TOOLS = {
     "capability_report",
     "context_pack",
     "list_uploads",
+    "download_file",
     "view_image",
     "recent_results",
     "plan_status",
@@ -320,6 +322,8 @@ def preview_command(command: dict[str, Any]) -> str:
         return f"read_skill {args.get('skill_id') or args.get('name') or ''}"
     if tool in {"list_skills", "skill_pack", "list_vault_credentials", "vault_list", "capability_report", "context_pack", "list_uploads", "recent_results", "job_status", "plugin_list", "plan_status"}:
         return tool
+    if tool == "download_file":
+        return f"download_file {args.get('path') or ''}"
     if tool == "view_image":
         return f"view_image {args.get('path') or ''}"
     if tool == "update_plan":
@@ -1036,6 +1040,29 @@ def image_url_for_workspace(workspace: Path, relative_path: str) -> str:
     return f"/projects/{project_id}/image?path={quote(relative_path, safe='')}"
 
 
+def file_url_for_workspace(workspace: Path, relative_path: str, *, inline: bool = False) -> str:
+    try:
+        project_id = project_id_for_workspace(workspace)
+    except Exception:
+        return ""
+    suffix = "&inline=1" if inline else ""
+    return f"/projects/{project_id}/file?path={quote(relative_path, safe='')}{suffix}"
+
+
+def run_download_file(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    args = command_args(command)
+    inline = bool(args.get("inline") or False)
+    try:
+        info = resolve_workspace_file(workspace, args.get("path") or args.get("file") or "")
+    except FileAccessError as exc:
+        raise ToolError(str(exc)) from exc
+    payload = file_info_payload(info, url=file_url_for_workspace(workspace, info.relative_path, inline=inline))
+    payload["inline"] = inline
+    payload["note"] = "Open this authenticated Handex URL to download or inspect the file. Secret-looking filenames are blocked by default."
+    output = json.dumps(payload, ensure_ascii=False, indent=2)
+    return ToolResult("download_file", command, mode, str(info.path.parent), f"download_file {info.relative_path}", 0, output + "\n", "")
+
+
 def run_view_image(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
     args = command_args(command)
     try:
@@ -1315,6 +1342,7 @@ registry.register("vault_run", run_vault_run)
 registry.register("capability_report", run_capability_report)
 registry.register("context_pack", run_context_pack)
 registry.register("list_uploads", run_list_uploads)
+registry.register("download_file", run_download_file)
 registry.register("view_image", run_view_image)
 registry.register("recent_results", run_recent_results)
 registry.register("tool_batch", run_tool_batch)

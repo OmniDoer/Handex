@@ -35,6 +35,7 @@ from .db import (
     update_project_goal,
     update_project,
 )
+from .files import FileAccessError, resolve_workspace_file
 from .history import sanitize_log_for_display
 from .images import ImageError, resolve_workspace_image
 from .jobs import get_job_display, job_sse_message, list_project_job_displays, stop_job
@@ -464,6 +465,27 @@ def project_image_route(
         info.path,
         media_type=info.media_type,
         headers={"Content-Disposition": "inline", "X-Content-Type-Options": "nosniff"},
+    )
+
+
+@app.get("/projects/{project_id}/file")
+def project_file_route(
+    project_id: int,
+    path: str,
+    inline: bool = False,
+    _: None = Depends(require_auth),
+) -> FileResponse:
+    project = project_or_404(project_id)
+    try:
+        info = resolve_workspace_file(project.get("workspace_path") or ".", path)
+    except FileAccessError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return FileResponse(
+        info.path,
+        media_type=info.media_type,
+        filename=info.name,
+        content_disposition_type="inline" if inline else "attachment",
+        headers={"X-Content-Type-Options": "nosniff"},
     )
 
 

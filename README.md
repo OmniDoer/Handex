@@ -99,6 +99,7 @@ Built-in tools:
 - `capability_report`
 - `context_pack`
 - `list_uploads`
+- `download_file`
 - `view_image`
 - `recent_results`
 - `tool_batch`
@@ -147,6 +148,12 @@ is shown or copied to a web LLM.
 through the project page. Uploaded files live under `.handex_uploads/` inside
 the workspace, so normal file tools can read, search, patch, or delete them
 after review.
+
+`download_file` returns metadata and an authenticated Handex download URL for a
+workspace file. It is intended for generated artifacts such as PDFs, archives,
+CSVs, model outputs, or logs that are too large or binary for `read_file`.
+Secret-looking filenames such as `.env`, private keys, and certificate/key files
+are blocked by default.
 
 `view_image` verifies a workspace raster image, returns type/size/dimensions,
 and provides an authenticated Handex preview URL. It is intended for uploaded
@@ -208,8 +215,8 @@ LLM how to behave like a coding agent inside the Hand Loop:
 - produce at most one next Tool Command per turn
 - request exact file reads and edits
 - apply focused Codex-style patch blocks or unified diffs through `apply_patch`
-- inspect user-provided files through `list_uploads`, `view_image`, and
-  `read_file`
+- inspect user-provided files and artifacts through `list_uploads`,
+  `download_file`, `view_image`, and `read_file`
 - recover missed Tool Result text through `recent_results` or the project
   Execution History section
 - batch independent read-only inspections through `tool_batch`
@@ -276,6 +283,7 @@ review loop intact:
 - the Single-Step Prompt includes a compact uploaded-file inventory
 - the LLM can request `list_uploads` for metadata and redacted text previews
 - the LLM can request `view_image` for an authenticated Handex image preview URL
+- the LLM can request `download_file` for a generated artifact download URL
 - normal tools can read `.handex_uploads/name`, grep uploaded text, or process
   binary/image files with shell commands after review
 
