@@ -52,6 +52,7 @@ Each project stores:
 - Summary history
 - Continuation transcript for resuming with another web LLM
 - Redacted JSON snapshot export/import
+- Workspace file and image uploads under `.handex_uploads/`
 
 Projects can be created, edited, entered, and deleted from the web UI.
 
@@ -94,6 +95,7 @@ Built-in tools:
 - `vault_run`
 - `capability_report`
 - `context_pack`
+- `list_uploads`
 - `plugin_list`
 - `plugin_run`
 
@@ -128,6 +130,11 @@ bounded file tree. Secret-looking files are omitted from the tree, and
 secret-looking lines in instruction files are redacted before the pack is shown
 or copied to a web LLM.
 
+`list_uploads` returns metadata and redacted text previews for files uploaded
+through the project page. Uploaded files live under `.handex_uploads/` inside
+the workspace, so normal file tools can read, search, patch, or delete them
+after review.
+
 `plugin_list` and `plugin_run` expose configured command plugins from
 `HANDEX_PLUGIN_ROOTS`. A plugin is a directory containing `plugin.json`; it
 declares a command argv, description, timeout, and whether it is allowed in
@@ -154,6 +161,7 @@ LLM how to behave like a coding agent inside the Hand Loop:
 - produce at most one next Tool Command per turn
 - request exact file reads and edits
 - apply focused unified diffs through `apply_patch`
+- inspect user-provided files through `list_uploads` and `read_file`
 - use skills by asking Handex to list/read configured `SKILL.md` files
 - view vault credential metadata without exposing secrets
 - run reviewed commands with local vault secrets injected through environment variables
@@ -199,6 +207,23 @@ Safe Mode keeps `context_pack` inside the project workspace. The pack is an
 orientation aid, not proof that the LLM has read every relevant file; the LLM
 should still request focused `read_file`, `grep`, or `git` commands before
 making implementation claims.
+
+## Workspace Uploads
+
+Project pages can upload files or images directly into the active workspace.
+Uploads are stored under `.handex_uploads/` and are not hidden from the tool
+runner. This mirrors Codex-style task attachments while keeping the manual
+review loop intact:
+
+- the human uploads a file from the browser
+- the Single-Step Prompt includes a compact uploaded-file inventory
+- the LLM can request `list_uploads` for metadata and redacted text previews
+- normal tools can read `.handex_uploads/name`, grep uploaded text, or process
+  binary/image files with shell commands after review
+
+Upload filenames and optional paths are sanitized, parent traversal is rejected,
+text previews redact common secret-looking lines, and the default upload limit
+is controlled by `HANDEX_MAX_UPLOAD_BYTES`.
 
 ## Skills
 
@@ -403,6 +428,7 @@ Important runtime configuration:
 ```sh
 HANDEX_SKILL_ROOTS=/opt/handex/skills
 HANDEX_VAULT_KEY=<generated-fernet-key>
+HANDEX_MAX_UPLOAD_BYTES=26214400
 HANDEX_VAULT_METADATA_COMMAND=
 HANDEX_HELP_COMMANDS=
 ```

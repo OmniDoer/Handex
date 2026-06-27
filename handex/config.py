@@ -25,6 +25,7 @@ class Settings:
     help_commands: List[Tuple[str, str]]
     vault_key: str
     max_output_chars: int = 20000
+    max_upload_bytes: int = 25 * 1024 * 1024
 
 
 def _path_list(value: str, default: list[Path]) -> list[Path]:
@@ -71,6 +72,7 @@ def load_settings() -> Settings:
         vault_metadata_command=os.environ.get("HANDEX_VAULT_METADATA_COMMAND", ""),
         help_commands=_help_commands(os.environ.get("HANDEX_HELP_COMMANDS", "")),
         vault_key=os.environ.get("HANDEX_VAULT_KEY", ""),
+        max_upload_bytes=int(os.environ.get("HANDEX_MAX_UPLOAD_BYTES", str(25 * 1024 * 1024))),
     )
 
 

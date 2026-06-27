@@ -59,6 +59,57 @@
   <textarea id="transcript-prompt" class="mono medium" readonly>{{ transcript_prompt }}</textarea>
 </section>
 
+<details class="section-block" id="uploads">
+  <summary>Workspace Uploads</summary>
+  <form class="stack upload-form" method="post" action="/projects/{{ project.id }}/uploads" enctype="multipart/form-data">
+    <label>
+      File Or Image
+      <input type="file" name="file" required>
+    </label>
+    <label>
+      Optional Path Under .handex_uploads/
+      <input name="target_path" placeholder="notes/input.txt or screenshots/bug.png">
+    </label>
+    <div class="button-row">
+      <button type="submit">Upload To Workspace</button>
+      <span class="hint">Max {{ max_upload_bytes }} bytes. Uploaded files are readable by tools at .handex_uploads/.</span>
+    </div>
+  </form>
+  {% if uploads %}
+    <div class="section-title inner">
+      <h2>Uploaded Files</h2>
+      <span>{{ uploads|length }} found</span>
+    </div>
+    {% for upload in uploads %}
+      <article class="history-item">
+        <div class="command-meta">
+          <strong>{{ upload.name }}</strong>
+          <span>{{ upload.path }}</span>
+        </div>
+        <dl class="preview-grid">
+          <div><dt>Size</dt><dd>{{ upload.size }} bytes</dd></div>
+          <div><dt>Type</dt><dd>{{ upload.media_type }}</dd></div>
+          <div><dt>Modified</dt><dd>{{ upload.modified_at }}</dd></div>
+        </dl>
+        {% if upload.preview %}
+          <label>
+            Text Preview
+            <textarea class="mono medium" readonly>{{ upload.preview }}</textarea>
+          </label>
+        {% elif upload.preview_omitted %}
+          <p class="empty">Preview omitted: {{ upload.preview_omitted }}.</p>
+        {% endif %}
+        <form method="post" action="/projects/{{ project.id }}/uploads/delete">
+          <input type="hidden" name="upload_path" value="{{ upload.upload_path }}">
+          <button class="danger" type="submit">Delete Upload</button>
+        </form>
+      </article>
+    {% endfor %}
+  {% else %}
+    <p class="empty">No uploaded files yet.</p>
+  {% endif %}
+</details>
+
 <details class="section-block" id="capabilities">
   <summary>Skills, Plugins And Vault</summary>
   <div class="section-title inner">

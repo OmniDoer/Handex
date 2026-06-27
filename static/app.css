@@ -336,7 +336,17 @@ details.section-block > summary {
 .button-row {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 10px;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.upload-form {
+  margin: 12px 0 18px;
 }
 
 .command-item,

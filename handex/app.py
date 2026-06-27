@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import Depends, FastAPI, Form, HTTPException, Request, status
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -45,6 +45,7 @@ from .prompts import (
 from .snapshot import build_project_snapshot, dumps_snapshot, imported_project_data, parse_snapshot
 from .tools.runner import ToolError, ToolResult, preview_command, registry
 from .transcript import build_project_transcript
+from .uploads import UploadError, delete_workspace_upload, list_workspace_uploads, save_workspace_upload
 from .vault import VaultError, create_item as vault_create_item, delete_item as vault_delete_item, list_items as vault_list_items, vault_enabled
 
 
@@ -111,6 +112,8 @@ def project_page_context(project: dict[str, Any], **extra: Any) -> dict[str, Any
         "context_pack": context_pack,
         "transcript_prompt": build_project_transcript(project, summaries, logs, context_pack, max_chars=24000),
         "summary_prompt": build_summary_prompt(project),
+        "uploads": list_workspace_uploads(project.get("workspace_path") or "."),
+        "max_upload_bytes": settings.max_upload_bytes,
         "summaries": summaries,
         "logs": logs,
         "skills": list_skills(),
@@ -310,6 +313,43 @@ def delete_project_route(project_id: int, _: None = Depends(require_auth)) -> Re
     project_or_404(project_id)
     delete_project(project_id)
     return redirect("/")
+
+
+@app.post("/projects/{project_id}/uploads")
+async def upload_project_file_route(
+    project_id: int,
+    file: Annotated[UploadFile, File()],
+    target_path: Annotated[str, Form()] = "",
+    _: None = Depends(require_auth),
+) -> RedirectResponse:
+    project = project_or_404(project_id)
+    workspace = ensure_workspace(project["workspace_path"])
+    try:
+        info = save_workspace_upload(workspace, file.filename or "upload", file.file, target_path=target_path)
+    except UploadError as exc:
+        add_log(project_id, "workspace.upload.error", stderr=str(exc))
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    finally:
+        await file.close()
+    add_log(project_id, "workspace.upload", stdout=f"Uploaded {info.path} ({info.size} bytes)")
+    return redirect(f"/projects/{project_id}#uploads")
+
+
+@app.post("/projects/{project_id}/uploads/delete")
+def delete_project_upload_route(
+    project_id: int,
+    upload_path: Annotated[str, Form()],
+    _: None = Depends(require_auth),
+) -> RedirectResponse:
+    project = project_or_404(project_id)
+    workspace = ensure_workspace(project["workspace_path"])
+    try:
+        info = delete_workspace_upload(workspace, upload_path)
+    except UploadError as exc:
+        add_log(project_id, "workspace.upload.delete.error", stderr=str(exc))
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    add_log(project_id, "workspace.upload.delete", stdout=f"Deleted {info.path}")
+    return redirect(f"/projects/{project_id}#uploads")
 
 
 @app.post("/projects/{project_id}/vault")

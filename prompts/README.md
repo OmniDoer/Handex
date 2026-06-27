@@ -39,3 +39,8 @@ Configured command plugins are exposed through `plugin_list` and `plugin_run`.
 The Single-Step Agent Prompt includes a plugin catalog snapshot and instructs
 the LLM to list plugins before running one, keeping plugin execution in the
 same reviewed one-command loop as built-in tools.
+
+Workspace uploads are exposed through the project page and the `list_uploads`
+tool. Uploaded files live under `.handex_uploads/` inside the workspace, and
+the Single-Step Agent Prompt includes a compact inventory so the LLM can ask
+for focused `read_file`, `grep`, or shell processing of user-provided files.

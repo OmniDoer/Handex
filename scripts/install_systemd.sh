@@ -13,6 +13,7 @@ if [[ ! -f /etc/handex/handex.env ]]; then
     printf 'HANDEX_LOGS_DIR=/opt/handex/logs\n'
     printf 'HANDEX_SKILL_ROOTS=/opt/handex/skills\n'
     printf 'HANDEX_PLUGIN_ROOTS=/opt/handex/plugins\n'
+    printf 'HANDEX_MAX_UPLOAD_BYTES=26214400\n'
     printf 'HANDEX_VAULT_METADATA_COMMAND=\n'
     printf 'HANDEX_HELP_COMMANDS=\n'
     printf 'HANDEX_SECRET_KEY=%s\n' "$(openssl rand -hex 32)"

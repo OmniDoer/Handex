@@ -19,6 +19,7 @@ from ..config import settings
 from ..context import build_context_pack
 from ..plugins import find_plugin, list_plugins, plugin_argv
 from ..prompts import TOOL_SCHEMA
+from ..uploads import list_workspace_uploads
 from ..vault import decrypt_item_secret, metadata_for_tools
 
 
@@ -271,7 +272,7 @@ def preview_command(command: dict[str, Any]) -> str:
         return f"{tool} {args.get('path') or args.get('root') or '.'}"
     if tool == "read_skill":
         return f"read_skill {args.get('skill_id') or args.get('name') or ''}"
-    if tool in {"list_skills", "skill_pack", "list_vault_credentials", "vault_list", "capability_report", "context_pack", "plugin_list"}:
+    if tool in {"list_skills", "skill_pack", "list_vault_credentials", "vault_list", "capability_report", "context_pack", "list_uploads", "plugin_list"}:
         return tool
     if tool == "plugin_run":
         return f"plugin_run {args.get('plugin_id') or args.get('id') or args.get('name') or ''}"
@@ -690,6 +691,29 @@ def run_context_pack(command: dict[str, Any], workspace: Path, mode: str) -> Too
     return ToolResult("context_pack", command, mode, str(cwd), "context_pack", 0, clamp_output(output) + "\n", "")
 
 
+def run_list_uploads(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    args = command_args(command)
+    try:
+        max_files = int(args.get("max_files") or 200)
+    except (TypeError, ValueError):
+        max_files = 200
+    uploads = [
+        {
+            "path": item.path,
+            "upload_path": item.upload_path,
+            "name": item.name,
+            "size": item.size,
+            "media_type": item.media_type,
+            "modified_at": item.modified_at,
+            "preview": item.preview,
+            "preview_omitted": item.preview_omitted,
+        }
+        for item in list_workspace_uploads(workspace, max_files=max(1, min(max_files, 500)))
+    ]
+    output = json.dumps(uploads, ensure_ascii=False, indent=2)
+    return ToolResult("list_uploads", command, mode, str(workspace), "list_uploads", 0, output + "\n", "")
+
+
 def run_plugin_list(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
     output = json.dumps(
         [
@@ -772,5 +796,6 @@ registry.register("vault_list", run_vault_list)
 registry.register("vault_run", run_vault_run)
 registry.register("capability_report", run_capability_report)
 registry.register("context_pack", run_context_pack)
+registry.register("list_uploads", run_list_uploads)
 registry.register("plugin_list", run_plugin_list)
 registry.register("plugin_run", run_plugin_run)
