@@ -11,6 +11,19 @@
   <span class="mode-pill {{ project_mode }}">{{ project_mode|upper }}</span>
 </section>
 
+<section class="section-block compact" id="goal">
+  <div class="section-title">
+    <h2>Goal</h2>
+  </div>
+  <form class="stack" method="post" action="/projects/{{ project.id }}/goal">
+    <label>
+      Current Goal
+      <textarea name="goal" rows="4" placeholder="What should the web LLM and Handex keep working toward?">{{ project.goal }}</textarea>
+    </label>
+    <button type="submit">Save Goal</button>
+  </form>
+</section>
+
 <section class="section-block" id="launch">
   <div class="section-title">
     <h2>Launch Prompt</h2>

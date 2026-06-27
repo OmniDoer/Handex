@@ -153,6 +153,15 @@ def update_project(project_id: int, data: dict[str, Any]) -> None:
         )
 
 
+def update_project_goal(project_id: int, goal: str) -> None:
+    timestamp = now_iso()
+    with connect() as conn:
+        conn.execute(
+            "UPDATE projects SET goal = ?, updated_at = ? WHERE id = ?",
+            (goal, timestamp, project_id),
+        )
+
+
 def delete_project(project_id: int) -> None:
     with connect() as conn:
         conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))

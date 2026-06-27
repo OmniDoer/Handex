@@ -25,6 +25,7 @@ from .db import (
     list_projects,
     list_summaries,
     save_summary,
+    update_project_goal,
     update_project,
 )
 from .parser import parse_llm_reply
@@ -200,6 +201,18 @@ def save_project_settings(
         },
     )
     return redirect(f"/projects/{project_id}#settings")
+
+
+@app.post("/projects/{project_id}/goal")
+def save_project_goal(
+    project_id: int,
+    goal: Annotated[str, Form()] = "",
+    _: None = Depends(require_auth),
+) -> RedirectResponse:
+    project_or_404(project_id)
+    update_project_goal(project_id, goal)
+    add_log(project_id, "project.goal.update", stdout=goal)
+    return redirect(f"/projects/{project_id}#goal")
 
 
 @app.post("/projects/{project_id}/delete")
