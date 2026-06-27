@@ -15,6 +15,7 @@ from typing import Any, Callable
 
 from ..capabilities import configured_capability_report, list_skills, list_vault_metadata, read_skill, skill_pack_prompt
 from ..config import settings
+from ..context import build_context_pack
 from ..prompts import TOOL_SCHEMA
 from ..vault import decrypt_item_secret, metadata_for_tools
 
@@ -190,7 +191,7 @@ def preview_command(command: dict[str, Any]) -> str:
         return f"{tool} {args.get('path') or args.get('root') or '.'}"
     if tool == "read_skill":
         return f"read_skill {args.get('skill_id') or args.get('name') or ''}"
-    if tool in {"list_skills", "skill_pack", "list_vault_credentials", "vault_list", "capability_report"}:
+    if tool in {"list_skills", "skill_pack", "list_vault_credentials", "vault_list", "capability_report", "context_pack"}:
         return tool
     if tool == "vault_run":
         return str(args.get("command") or "")
@@ -590,6 +591,17 @@ def run_capability_report(command: dict[str, Any], workspace: Path, mode: str) -
     return ToolResult(tool_name, command, mode, str(workspace), tool_name, 0, clamp_output(configured_capability_report()) + "\n", "")
 
 
+def run_context_pack(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    cwd = resolve_cwd(command, workspace, mode)
+    args = command_args(command)
+    try:
+        max_chars = int(args.get("max_chars") or 16000)
+    except (TypeError, ValueError):
+        max_chars = 16000
+    output = build_context_pack(cwd, max_chars=max_chars)
+    return ToolResult("context_pack", command, mode, str(cwd), "context_pack", 0, clamp_output(output) + "\n", "")
+
+
 registry = ToolRegistry()
 registry.register("shell", run_shell)
 registry.register("python", run_python)
@@ -610,3 +622,4 @@ registry.register("list_vault_credentials", run_list_vault_credentials)
 registry.register("vault_list", run_vault_list)
 registry.register("vault_run", run_vault_run)
 registry.register("capability_report", run_capability_report)
+registry.register("context_pack", run_context_pack)

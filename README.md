@@ -91,6 +91,7 @@ Built-in tools:
 - `vault_list`
 - `vault_run`
 - `capability_report`
+- `context_pack`
 
 Command schema:
 
@@ -111,6 +112,12 @@ returns a `ToolResult`.
 `apply_patch` accepts a unified diff and runs `git apply --check` before
 applying it. In Safe Mode, absolute paths and `..` paths are rejected.
 
+`context_pack` returns a Codex-style workspace orientation snapshot: Git status,
+recent commits, workspace `AGENTS.md` instructions, top-level manifests, and a
+bounded file tree. Secret-looking files are omitted from the tree, and
+secret-looking lines in instruction files are redacted before the pack is shown
+or copied to a web LLM.
+
 ## Single-Step Agent Mode
 
 Handex can be used as a manual replacement when an automated coding agent is
@@ -126,6 +133,7 @@ The project page includes a Codex-style Single-Step Prompt that tells any web
 LLM how to behave like a coding agent inside the Hand Loop:
 
 - inspect local context through Tool Commands
+- refresh repo orientation through `context_pack`
 - produce at most one next Tool Command per turn
 - request exact file reads and edits
 - apply focused unified diffs through `apply_patch`
@@ -148,10 +156,32 @@ The migration target is muscle-memory compatibility:
 - review the same surface Codex would have reviewed internally: JSON, command,
   cwd, mode, stdout, stderr, and result prompt
 - use familiar tools: `shell`, `python`, `git`, `apply_patch`, file tools,
-  skills, and vault-backed command execution
+  `context_pack`, skills, and vault-backed command execution
 - keep working one step at a time until the Summary is updated
 
 The only new habit is moving text between the web LLM and Handex.
+
+## Workspace Context Pack
+
+Codex normally sees the current worktree, Git state, and repository
+instructions before it acts. Handex mirrors that pattern with a generated
+Workspace Context Pack on each project page and through the `context_pack`
+tool.
+
+The pack includes:
+
+- project workspace path
+- `git status --short --branch`
+- recent commits
+- `AGENTS.md` files found inside the workspace
+- common manifests such as `README.md`, `requirements.txt`, `package.json`,
+  `pyproject.toml`, and similar project entrypoints
+- a bounded file tree that skips bulky runtime folders
+
+Safe Mode keeps `context_pack` inside the project workspace. The pack is an
+orientation aid, not proof that the LLM has read every relevant file; the LLM
+should still request focused `read_file`, `grep`, or `git` commands before
+making implementation claims.
 
 ## Skills
 

@@ -90,6 +90,29 @@ class RunnerTests(unittest.TestCase):
             with self.assertRaises(ToolError):
                 registry.run({"tool": "apply_patch", "args": {"patch": patch}, "cwd": "."}, tmp, "safe")
 
+    def test_context_pack_includes_agents_and_redacts_secret_lines(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "AGENTS.md").write_text(
+                "Follow local instructions.\nDefault password: should-not-leak\n",
+                encoding="utf-8",
+            )
+            (root / "README.md").write_text("# Demo\n", encoding="utf-8")
+            (root / ".env").write_text("TOKEN=should-not-leak\n", encoding="utf-8")
+
+            result = registry.run({"tool": "context_pack", "args": {}}, tmp, "safe")
+
+            self.assertEqual(result.exit_code, 0)
+            self.assertIn("Follow local instructions.", result.stdout)
+            self.assertIn("README.md", result.stdout)
+            self.assertNotIn("should-not-leak", result.stdout)
+            self.assertIn("Secret-looking file names omitted", result.stdout)
+
+    def test_context_pack_safe_mode_blocks_outside_cwd(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ToolError):
+                registry.run({"tool": "context_pack", "args": {}, "cwd": ".."}, tmp, "safe")
+
 
 if __name__ == "__main__":
     unittest.main()

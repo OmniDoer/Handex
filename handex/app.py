@@ -14,6 +14,7 @@ from . import __version__
 from .auth import login_response, logout_response, request_next_url, require_auth, verify_password
 from .capabilities import list_skills, list_vault_metadata
 from .config import settings
+from .context import build_context_pack
 from .db import (
     add_log,
     create_project,
@@ -89,6 +90,7 @@ def project_page_context(project: dict[str, Any], **extra: Any) -> dict[str, Any
         "project": project,
         "start_prompt": build_start_prompt(project),
         "agent_prompt": build_agent_fallback_prompt(project),
+        "context_pack": build_context_pack(project.get("workspace_path") or ".", max_chars=12000),
         "summary_prompt": build_summary_prompt(project),
         "summaries": list_summaries(int(project["id"])),
         "logs": list_logs(int(project["id"])),
@@ -282,6 +284,12 @@ def summary_prompt(project_id: int, _: None = Depends(require_auth)) -> str:
 @app.get("/projects/{project_id}/prompt/agent", response_class=PlainTextResponse)
 def agent_prompt(project_id: int, _: None = Depends(require_auth)) -> str:
     return build_agent_fallback_prompt(project_or_404(project_id))
+
+
+@app.get("/projects/{project_id}/prompt/context", response_class=PlainTextResponse)
+def context_prompt(project_id: int, _: None = Depends(require_auth)) -> str:
+    project = project_or_404(project_id)
+    return build_context_pack(project.get("workspace_path") or ".", max_chars=16000)
 
 
 @app.post("/projects/{project_id}/parse", response_class=HTMLResponse)
