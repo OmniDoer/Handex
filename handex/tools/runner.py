@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from ..bootstrap import BootstrapError, bootstrap_workspace_from_git, redacted_repo_url
-from ..capabilities import configured_capability_report, list_skills, list_vault_metadata, read_skill, skill_pack_prompt
+from ..capabilities import configured_capability_report, list_skills, list_vault_metadata, read_skill, search_capabilities, skill_pack_prompt
 from ..config import settings
 from ..context import build_context_pack
 from ..db import get_project_plan, save_project_plan
@@ -60,6 +60,7 @@ SAFE_BATCH_TOOLS = {
     "list_vault_credentials",
     "vault_list",
     "capability_report",
+    "capability_search",
     "context_pack",
     "list_uploads",
     "download_file",
@@ -322,6 +323,8 @@ def preview_command(command: dict[str, Any]) -> str:
         return f"read_skill {args.get('skill_id') or args.get('name') or ''}"
     if tool in {"list_skills", "skill_pack", "list_vault_credentials", "vault_list", "capability_report", "context_pack", "list_uploads", "recent_results", "job_status", "plugin_list", "plan_status"}:
         return tool
+    if tool == "capability_search":
+        return f"capability_search {args.get('query') or ''}"
     if tool == "download_file":
         return f"download_file {args.get('path') or ''}"
     if tool == "view_image":
@@ -997,6 +1000,17 @@ def run_capability_report(command: dict[str, Any], workspace: Path, mode: str) -
     return ToolResult(tool_name, command, mode, str(workspace), tool_name, 0, clamp_output(configured_capability_report()) + "\n", "")
 
 
+def run_capability_search(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    args = command_args(command)
+    try:
+        limit = int(args.get("limit") or 12)
+    except (TypeError, ValueError):
+        limit = 12
+    payload = search_capabilities(str(args.get("query") or ""), limit=limit)
+    output = json.dumps(payload, ensure_ascii=False, indent=2)
+    return ToolResult("capability_search", command, mode, str(workspace), "capability_search", 0, output + "\n", "")
+
+
 def run_context_pack(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
     cwd = resolve_cwd(command, workspace, mode)
     args = command_args(command)
@@ -1340,6 +1354,7 @@ registry.register("list_vault_credentials", run_list_vault_credentials)
 registry.register("vault_list", run_vault_list)
 registry.register("vault_run", run_vault_run)
 registry.register("capability_report", run_capability_report)
+registry.register("capability_search", run_capability_search)
 registry.register("context_pack", run_context_pack)
 registry.register("list_uploads", run_list_uploads)
 registry.register("download_file", run_download_file)

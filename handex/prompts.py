@@ -36,6 +36,7 @@ TOOL_NAMES = [
     "vault_list",
     "vault_run",
     "capability_report",
+    "capability_search",
     "context_pack",
     "list_uploads",
     "download_file",
@@ -99,7 +100,7 @@ DEFAULT_TOOL_PROTOCOL = """When you need Linux tools, output exactly one Tool Co
 
 Schema:
 {
-  "tool": "shell | background_shell | python | read_file | write_file | append_file | replace_file | delete_file | list_files | search_files | grep | git | git_bootstrap | apply_patch | list_skills | read_skill | skill_pack | list_vault_credentials | vault_list | vault_run | capability_report | context_pack | list_uploads | download_file | view_image | recent_results | tool_batch | update_plan | plan_status | job_status | job_stop | plugin_list | plugin_run",
+  "tool": "shell | background_shell | python | read_file | write_file | append_file | replace_file | delete_file | list_files | search_files | grep | git | git_bootstrap | apply_patch | list_skills | read_skill | skill_pack | list_vault_credentials | vault_list | vault_run | capability_report | capability_search | context_pack | list_uploads | download_file | view_image | recent_results | tool_batch | update_plan | plan_status | job_status | job_stop | plugin_list | plugin_run",
   "args": {},
   "cwd": ".",
   "mode": "safe",
@@ -122,6 +123,7 @@ Examples:
 {"tool":"vault_list","args":{},"mode":"safe","reason":"inspect Handex local vault metadata"}
 {"tool":"vault_run","args":{"credential_id":"handex:1","env":"HANDEX_SECRET","command":"printf ready"},"cwd":".","mode":"safe","reason":"run a command with a reviewed secret environment variable"}
 {"tool":"capability_report","args":{},"mode":"safe","reason":"inspect configured Handex skill roots and providers"}
+{"tool":"capability_search","args":{"query":"github release","limit":8},"mode":"safe","reason":"find relevant tools, skills, plugins, or credentials"}
 {"tool":"context_pack","args":{},"cwd":".","mode":"safe","reason":"inspect Git status, inherited AGENTS.md, manifests, and file tree"}
 {"tool":"list_uploads","args":{},"mode":"safe","reason":"inspect user-uploaded workspace files"}
 {"tool":"download_file","args":{"path":"reports/output.pdf"},"mode":"safe","reason":"provide an authenticated download URL for a generated artifact"}
@@ -210,6 +212,7 @@ Operating rules:
 - Never say a command ran until Handex returns Tool Result.
 - Keep secrets out of chat. Vault access is metadata-only unless the human explicitly runs a local Vault-backed command after review.
 - Use background_shell for commands that may run long, then poll with job_status; stop unneeded jobs with job_stop.
+- Use capability_search when the right built-in tool, skill, plugin, or credential metadata is unclear.
 - Use Handex skills by listing configured skill roots first, then reading only the relevant SKILL.md instructions.
 - Use git_bootstrap to clone a repository only when the workspace is empty and the URL has no embedded credentials.
 - Use context_pack for Codex-style workspace orientation when Git status, inherited AGENTS.md rules, manifests, or the file tree may matter.

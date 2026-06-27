@@ -1,19 +1,22 @@
 import json
+import sys
 import tempfile
 import textwrap
 import types
 import unittest
 from pathlib import Path
 
-from handex import capabilities
+from handex import capabilities, plugins
 
 
 class CapabilityTests(unittest.TestCase):
     def setUp(self):
         self.original_settings = capabilities.settings
+        self.original_plugin_settings = plugins.settings
 
     def tearDown(self):
         capabilities.settings = self.original_settings
+        plugins.settings = self.original_plugin_settings
 
     def test_skills_are_loaded_from_configured_roots(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -69,6 +72,67 @@ class CapabilityTests(unittest.TestCase):
             self.assertEqual(metadata[0]["credential_id"], "cred_1")
             self.assertNotIn("password", metadata[0])
             self.assertNotIn("must-not-appear", json.dumps(metadata))
+
+    def test_capability_search_finds_tools_skills_plugins_vault_and_help(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            skill_root = root / "skills"
+            plugin_root = root / "plugins"
+            skill_dir = skill_root / "release-manager"
+            plugin_dir = plugin_root / "release-plugin"
+            skill_dir.mkdir(parents=True)
+            plugin_dir.mkdir(parents=True)
+            (skill_dir / "SKILL.md").write_text(
+                textwrap.dedent(
+                    """\
+                    ---
+                    name: release-manager
+                    description: Ship GitHub releases.
+                    ---
+
+                    # Release Manager
+                    """
+                ),
+                encoding="utf-8",
+            )
+            (plugin_dir / "plugin.json").write_text(
+                json.dumps(
+                    {
+                        "id": "release-plugin",
+                        "name": "Release Plugin",
+                        "description": "Publish release metadata.",
+                        "command": [sys.executable, "-c", "print('ok')"],
+                        "safe": True,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            emitter = root / "vault_emit.py"
+            emitter.write_text(
+                "import json\n"
+                "print(json.dumps([{'credential_id':'cred_release','username':'u***r',"
+                "'metadata':{'kind':'token','name':'GitHub release token','host':'github.com'},"
+                "'password':'must-not-appear'}]))\n",
+                encoding="utf-8",
+            )
+            capabilities.settings = types.SimpleNamespace(
+                skill_roots=[skill_root],
+                vault_metadata_command=f"{sys.executable} {emitter}",
+                help_commands=[("release-help", "release --help")],
+            )
+            plugins.settings = types.SimpleNamespace(plugin_roots=[plugin_root])
+
+            tool_payload = capabilities.search_capabilities("patch", limit=5)
+            release_payload = capabilities.search_capabilities("release", limit=20)
+
+            self.assertIn(("tool", "apply_patch"), {(item["type"], item["id"]) for item in tool_payload["results"]})
+            release_matches = {(item["type"], item["id"]) for item in release_payload["results"]}
+            self.assertIn(("skill", "root1:release-manager"), release_matches)
+            self.assertIn(("plugin", "release-plugin"), release_matches)
+            self.assertIn(("vault_credential", "cred_release"), release_matches)
+            self.assertIn(("help_command", "release-help"), release_matches)
+            self.assertEqual(release_payload["errors"], [])
+            self.assertNotIn("must-not-appear", json.dumps(release_payload))
 
 
 if __name__ == "__main__":

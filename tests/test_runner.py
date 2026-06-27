@@ -60,6 +60,15 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(result.exit_code, 0)
             self.assertIn("Use this skill for tests.", result.stdout)
 
+    def test_capability_search_tool_returns_matching_builtin(self):
+        capabilities.settings = types.SimpleNamespace(skill_roots=[], vault_metadata_command="", help_commands=[])
+        with tempfile.TemporaryDirectory() as tmp:
+            result = registry.run({"tool": "capability_search", "args": {"query": "patch", "limit": 5}}, tmp, "safe")
+
+        payload = json.loads(result.stdout)
+        self.assertEqual(result.exit_code, 0)
+        self.assertIn(("tool", "apply_patch"), {(item["type"], item["id"]) for item in payload["results"]})
+
     def test_apply_patch_updates_workspace_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "note.txt"

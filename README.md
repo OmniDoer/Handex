@@ -97,6 +97,7 @@ Built-in tools:
 - `vault_list`
 - `vault_run`
 - `capability_report`
+- `capability_search`
 - `context_pack`
 - `list_uploads`
 - `download_file`
@@ -143,6 +144,12 @@ recent commits, inherited and workspace `AGENTS.md` instructions, top-level
 manifests, and a bounded file tree. Secret-looking files are omitted from the
 tree, and secret-looking lines in instruction files are redacted before the pack
 is shown or copied to a web LLM.
+
+`capability_search` is a lightweight Codex `tool_search` equivalent for the
+manual loop. It searches built-in tools, configured skills, command plugins,
+vault credential metadata, and configured help command labels, then returns the
+matching next tool to use. It is read-only and safe to run before deciding
+whether the task needs a skill, plugin, vault credential, or ordinary tool.
 
 `list_uploads` returns metadata and redacted text previews for files uploaded
 through the project page. Uploaded files live under `.handex_uploads/` inside
@@ -223,6 +230,8 @@ LLM how to behave like a coding agent inside the Hand Loop:
 - keep a visible multi-step plan through `update_plan` and `plan_status`
 - run long commands through `background_shell`, then poll or stop them with
   `job_status` and `job_stop`
+- search available tools, skills, plugins, vault metadata, and help entries
+  through `capability_search`
 - use skills by asking Handex to list/read configured `SKILL.md` files
 - view vault credential metadata without exposing secrets
 - run reviewed commands with local vault secrets injected through environment variables
@@ -242,8 +251,8 @@ The migration target is muscle-memory compatibility:
 - review the same surface Codex would have reviewed internally: JSON, command,
   cwd, mode, diff preview, stdout, stderr, and result prompt
 - use familiar tools: `shell`, `python`, `git`, `apply_patch`, file tools,
-  `context_pack`, `tool_batch`, `update_plan`, skills, plugins, and
-  vault-backed command execution
+  `context_pack`, `capability_search`, `tool_batch`, `update_plan`, skills,
+  plugins, and vault-backed command execution
 - keep working one step at a time until the Summary is updated
 
 The only new habit is moving text between the web LLM and Handex.
@@ -383,7 +392,12 @@ HANDEX_HELP_COMMANDS='codex=codex --help;;omnidoer=omnidoer --help'
 
 The `capability_report` tool reports configured skill roots, plugin roots,
 whether a vault metadata provider exists, and the help output from those
-commands.
+commands. The `capability_search` tool searches those same capability sources
+plus built-in tool descriptions, skills, plugins, and vault credential metadata:
+
+```json
+{"tool":"capability_search","args":{"query":"github release","limit":8},"mode":"safe","reason":"find the relevant Handex capability"}
+```
 
 ## Command Plugins
 
@@ -463,10 +477,11 @@ For broad inspection turns, Handex supports one reviewed batch command:
 ```
 
 Safe Mode batches are intentionally read-only. They support file reads/searches,
-context and history lookups, skills/vault metadata, plan status, job status,
-plugin lists, and read-only git subcommands. Use normal single commands for
-file edits, shell commands, background jobs, vault-backed commands, and plugin
-execution so the human reviews each side-effecting action directly.
+context and history lookups, capability discovery, skills/vault metadata, plan
+status, job status, plugin lists, and read-only git subcommands. Use normal
+single commands for file edits, shell commands, background jobs, vault-backed
+commands, and plugin execution so the human reviews each side-effecting action
+directly.
 
 ## Execution History
 

@@ -46,6 +46,10 @@ The Single-Step Agent Prompt includes a plugin catalog snapshot and instructs
 the LLM to list plugins before running one, keeping plugin execution in the
 same reviewed one-command loop as built-in tools.
 
+Capability discovery is exposed through `capability_search`. It gives the LLM a
+Codex `tool_search`-style way to search built-in tools, skills, plugins, vault
+metadata, and help command labels before choosing the next reviewed command.
+
 Workspace uploads are exposed through the project page and the `list_uploads`
 tool. Uploaded files live under `.handex_uploads/` inside the workspace, and
 the Single-Step Agent Prompt includes a compact inventory so the LLM can ask
