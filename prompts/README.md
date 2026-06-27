@@ -71,10 +71,13 @@ with `omnidoer_request_deny`.
 can unblock a user-approved action.
 
 Configured OmniDoer vault metadata can be listed with
-`omnidoer_credential_list`, and the configured vault/passphrase file can be
-checked with `omnidoer_vault_unlock`. Both tools return public metadata/status
-only; direct `cred add` is intentionally not exposed because credentials should
-enter through the Control Client request flow rather than chat text.
+`omnidoer_credential_list`, a configured vault can be created with
+`omnidoer_vault_create`, and the configured vault/passphrase file can be
+checked with `omnidoer_vault_unlock`. Vault creation is YOLO-only and refuses
+to overwrite an existing vault unless `overwrite` is explicitly true. These
+tools return public metadata/status only; direct `cred add` is intentionally not
+exposed because credentials should enter through the Control Client request flow
+rather than chat text.
 
 OmniDoer Control Client task queues are exposed through
 `omnidoer_task_submit`, `omnidoer_task_list`, `omnidoer_task_complete`, and

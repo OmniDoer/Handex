@@ -59,6 +59,12 @@ class RunnerTests(unittest.TestCase):
                     ]))
                 elif argv[:2] == ["vault", "unlock"]:
                     print(f"vault unlocked: {argv[argv.index('--path') + 1]}")
+                elif argv[:2] == ["vault", "create"]:
+                    print(json.dumps({
+                        "status": "created",
+                        "path": argv[argv.index("--path") + 1],
+                        "has_passphrase_file_arg": "--passphrase-file" in argv,
+                    }))
                 elif argv[:1] == ["doctor"]:
                     print("doctor_ok=true")
                     print("status=ready")
@@ -453,6 +459,38 @@ class RunnerTests(unittest.TestCase):
         self.assertFalse(unlock_payload["secret_exposed_to_model"])
         self.assertIn("vault unlocked", " ".join(unlock_payload["notes"]))
         self.assertIn("--passphrase-file", unlocked.final_command)
+
+    def test_omnidoer_vault_create_is_yolo_only_and_guards_overwrite(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            script = self.write_fake_omnidoer(Path(tmp))
+            vault_path = Path(tmp) / "vault.json"
+            passphrase_file = Path(tmp) / "vault-passphrase"
+            passphrase_file.write_text("test-passphrase\n", encoding="utf-8")
+            runner.settings = types.SimpleNamespace(
+                max_output_chars=20000,
+                omnidoer_bin=str(script),
+                omnidoer_vault_path=str(vault_path),
+                omnidoer_vault_passphrase_file=str(passphrase_file),
+                omnidoer_git_origin="https://github.com",
+                omnidoer_github_api_origin="https://api.github.com",
+            )
+
+            with self.assertRaises(ToolError):
+                registry.run({"tool": "omnidoer_vault_create", "args": {}}, tmp, "safe")
+            created = registry.run({"tool": "omnidoer_vault_create", "args": {}}, tmp, "yolo")
+            vault_path.write_text("existing", encoding="utf-8")
+            with self.assertRaises(ToolError):
+                registry.run({"tool": "omnidoer_vault_create", "args": {}}, tmp, "yolo")
+            overwritten = registry.run({"tool": "omnidoer_vault_create", "args": {"overwrite": True}}, tmp, "yolo")
+
+        created_payload = json.loads(created.stdout)
+        self.assertEqual(created_payload["status"], "created")
+        self.assertTrue(created_payload["has_passphrase_file_arg"])
+        self.assertFalse(created_payload["secret_exposed_to_model"])
+        self.assertFalse(created_payload["overwrote_existing"])
+        overwritten_payload = json.loads(overwritten.stdout)
+        self.assertTrue(overwritten_payload["overwrote_existing"])
+        self.assertNotIn("test-passphrase", overwritten.final_command)
 
     def test_omnidoer_request_status_wait_save_and_deny_are_public(self):
         with tempfile.TemporaryDirectory() as tmp:

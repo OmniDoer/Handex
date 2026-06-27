@@ -101,6 +101,7 @@ Built-in tools:
 - `vault_run`
 - `omnidoer_credential_request`
 - `omnidoer_credential_list`
+- `omnidoer_vault_create`
 - `omnidoer_vault_unlock`
 - `omnidoer_credential_save_request`
 - `omnidoer_request_status`
@@ -267,9 +268,11 @@ configured OmniDoer vault. `omnidoer_request_deny` cancels a stale request.
 `omnidoer_request_approve` is YOLO-only because it changes Control Client
 request state and can unblock a user-approved action.
 
-`omnidoer_credential_list` lists configured OmniDoer vault credential metadata,
-and `omnidoer_vault_unlock` verifies the configured vault/passphrase file
-without returning the passphrase.
+`omnidoer_credential_list` lists configured OmniDoer vault credential metadata.
+`omnidoer_vault_create` creates the configured OmniDoer vault using the
+configured passphrase file; it is YOLO-only and refuses to overwrite an existing
+vault unless `overwrite` is set after review. `omnidoer_vault_unlock` verifies
+the configured vault/passphrase file without returning the passphrase.
 
 `omnidoer_task_submit`, `omnidoer_task_list`, `omnidoer_task_complete`, and
 `omnidoer_task_cancel` bridge OmniDoer's Control Client task queue. They are
@@ -364,6 +367,8 @@ LLM how to behave like a coding agent inside the Hand Loop:
 - view vault credential metadata without exposing secrets
 - list configured OmniDoer vault credential metadata and verify vault unlock
   readiness without exposing passphrases
+- create the configured OmniDoer vault with the configured passphrase file in
+  reviewed YOLO Mode, guarded against accidental overwrite
 - run reviewed commands with local vault secrets injected through environment variables
 - request missing credentials through the paired OmniDoer Control Client without
   pasting secrets into chat
@@ -555,6 +560,9 @@ The related tools are:
   credential without exposing plaintext to Handex
 - `omnidoer_credential_list`: list configured OmniDoer vault credential
   metadata without plaintext secrets
+- `omnidoer_vault_create`: create the configured OmniDoer vault with the
+  configured passphrase file; YOLO Mode only, guarded against overwrite unless
+  `overwrite` is true
 - `omnidoer_vault_unlock`: verify the configured OmniDoer vault/passphrase file
   can be unlocked without returning the passphrase
 - `omnidoer_credential_save_request`: store a fulfilled request in the

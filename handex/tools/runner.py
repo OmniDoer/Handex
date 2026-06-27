@@ -343,6 +343,9 @@ def preview_command(command: dict[str, Any]) -> str:
         return "omnidoer cred list"
     if tool == "omnidoer_credential_save_request":
         return f"omnidoer cred save-request {args.get('request_id') or args.get('id') or ''}"
+    if tool == "omnidoer_vault_create":
+        overwrite = " --overwrite-existing" if bool(args.get("overwrite")) else ""
+        return f"omnidoer vault create{overwrite}"
     if tool == "omnidoer_vault_unlock":
         return "omnidoer vault unlock"
     if tool == "omnidoer_request_status":
@@ -984,6 +987,27 @@ def run_omnidoer_vault_unlock(command: dict[str, Any], workspace: Path, mode: st
     payload["secret_exposed_to_model"] = False
     output = public_json(payload)
     return ToolResult("omnidoer_vault_unlock", command, mode, result.cwd, result.final_command, result.exit_code, output + "\n", result.stderr)
+
+
+def run_omnidoer_vault_create(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    require_yolo(mode, "omnidoer_vault_create", "creating a vault writes encrypted credential storage and can overwrite an existing vault")
+    cwd = resolve_cwd(command, workspace, mode)
+    args = command_args(command)
+    vault_args = omnidoer_vault_args()
+    vault_path = Path(vault_args[1]).expanduser()
+    existed_before = vault_path.exists()
+    if existed_before and not bool(args.get("overwrite")):
+        raise ToolError("omnidoer_vault_create refused to overwrite the configured vault. Set args.overwrite true only after backing up and reviewing the target path.")
+    argv = [*omnidoer_base_argv(), "vault", "create", "--path", vault_args[1], "--passphrase-file", vault_args[3]]
+    result = run_omnidoer_subprocess(command, tool="omnidoer_vault_create", mode=mode, cwd=cwd, argv=argv)
+    payload = parse_public_json_or_kv(result.stdout)
+    if not isinstance(payload, dict):
+        payload = {"result": payload}
+    payload["secret_exposed_to_model"] = False
+    payload["vault_path"] = str(vault_path)
+    payload["overwrote_existing"] = bool(args.get("overwrite")) and existed_before
+    output = public_json(payload)
+    return ToolResult("omnidoer_vault_create", command, mode, result.cwd, result.final_command, result.exit_code, output + "\n", result.stderr)
 
 
 def run_omnidoer_credential_save_request(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
@@ -2550,6 +2574,7 @@ registry.register("python", run_python)
 registry.register("git", run_git)
 registry.register("omnidoer_credential_request", run_omnidoer_credential_request)
 registry.register("omnidoer_credential_list", run_omnidoer_credential_list)
+registry.register("omnidoer_vault_create", run_omnidoer_vault_create)
 registry.register("omnidoer_vault_unlock", run_omnidoer_vault_unlock)
 registry.register("omnidoer_credential_save_request", run_omnidoer_credential_save_request)
 registry.register("omnidoer_request_status", run_omnidoer_request_status)
