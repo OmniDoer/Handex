@@ -48,6 +48,17 @@ class RunnerTests(unittest.TestCase):
                     print(f"origin={origin}")
                     print("expires_at=123.5")
                     print("secret_exposed_to_model=false")
+                elif argv[:2] == ["cred", "list"]:
+                    print(json.dumps([
+                        {
+                            "credential_id": "cred_test",
+                            "username": "bot",
+                            "allowed_origins": ["https://github.com"],
+                            "metadata": {"kind": "github", "api_token": "must-not-appear"},
+                        }
+                    ]))
+                elif argv[:2] == ["vault", "unlock"]:
+                    print(f"vault unlocked: {argv[argv.index('--path') + 1]}")
                 elif argv[:1] == ["doctor"]:
                     print("doctor_ok=true")
                     print("status=ready")
@@ -324,6 +335,25 @@ class RunnerTests(unittest.TestCase):
 
             with self.assertRaises(ToolError):
                 registry.run({"tool": "omnidoer_credential_request", "args": {"origin": "http://example.com"}}, tmp, "safe")
+
+    def test_omnidoer_credential_list_and_vault_unlock_are_public(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            script = self.write_fake_omnidoer(Path(tmp))
+            runner.settings = self.fake_omnidoer_settings(script)
+
+            listed = registry.run({"tool": "omnidoer_credential_list", "args": {}}, tmp, "safe")
+            unlocked = registry.run({"tool": "omnidoer_vault_unlock", "args": {}}, tmp, "safe")
+
+        credentials = json.loads(listed.stdout)
+        unlock_payload = json.loads(unlocked.stdout)
+        self.assertEqual(credentials[0]["credential_id"], "cred_test")
+        self.assertEqual(credentials[0]["metadata"]["api_token"], "[REDACTED]")
+        self.assertNotIn("must-not-appear", listed.stdout)
+        self.assertIn("--vault", listed.final_command)
+        self.assertNotIn("--passphrase-file", listed.final_command)
+        self.assertFalse(unlock_payload["secret_exposed_to_model"])
+        self.assertIn("vault unlocked", " ".join(unlock_payload["notes"]))
+        self.assertIn("--passphrase-file", unlocked.final_command)
 
     def test_omnidoer_request_status_wait_save_and_deny_are_public(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -28,6 +28,8 @@ TOOL_NAMES = [
     "grep",
     "git",
     "omnidoer_credential_request",
+    "omnidoer_credential_list",
+    "omnidoer_vault_unlock",
     "omnidoer_credential_save_request",
     "omnidoer_request_status",
     "omnidoer_request_wait",
@@ -133,7 +135,7 @@ DEFAULT_TOOL_PROTOCOL = """When you need Linux tools, output exactly one Tool Co
 
 Schema:
 {
-  "tool": "shell | background_shell | python | read_file | write_file | append_file | replace_file | delete_file | list_files | search_files | grep | git | omnidoer_credential_request | omnidoer_credential_save_request | omnidoer_request_status | omnidoer_request_wait | omnidoer_request_deny | omnidoer_task_submit | omnidoer_task_list | omnidoer_task_complete | omnidoer_task_cancel | omnidoer_chat_messages | omnidoer_chat_next | omnidoer_chat_send | omnidoer_chat_reply | omnidoer_chat_log_user | omnidoer_chat_start | omnidoer_chat_delta | omnidoer_chat_complete | omnidoer_chat_record | omnidoer_doctor | omnidoer_control_status | omnidoer_control_devices | omnidoer_control_sessions | omnidoer_control_tunnel_info | omnidoer_control_security_status | omnidoer_control_sync_status | omnidoer_audit_tail | omnidoer_audit_verify | omnidoer_policy_test | omnidoer_telegram_status | omnidoer_browser_open | omnidoer_git | omnidoer_github_api | git_bootstrap | apply_patch | list_skills | read_skill | read_skill_file | skill_pack | list_vault_credentials | vault_list | vault_run | capability_report | capability_search | context_pack | list_uploads | download_file | view_image | recent_results | tool_batch | update_plan | plan_status | job_status | job_stop | plugin_list | plugin_run",
+  "tool": "shell | background_shell | python | read_file | write_file | append_file | replace_file | delete_file | list_files | search_files | grep | git | omnidoer_credential_request | omnidoer_credential_list | omnidoer_vault_unlock | omnidoer_credential_save_request | omnidoer_request_status | omnidoer_request_wait | omnidoer_request_deny | omnidoer_task_submit | omnidoer_task_list | omnidoer_task_complete | omnidoer_task_cancel | omnidoer_chat_messages | omnidoer_chat_next | omnidoer_chat_send | omnidoer_chat_reply | omnidoer_chat_log_user | omnidoer_chat_start | omnidoer_chat_delta | omnidoer_chat_complete | omnidoer_chat_record | omnidoer_doctor | omnidoer_control_status | omnidoer_control_devices | omnidoer_control_sessions | omnidoer_control_tunnel_info | omnidoer_control_security_status | omnidoer_control_sync_status | omnidoer_audit_tail | omnidoer_audit_verify | omnidoer_policy_test | omnidoer_telegram_status | omnidoer_browser_open | omnidoer_git | omnidoer_github_api | git_bootstrap | apply_patch | list_skills | read_skill | read_skill_file | skill_pack | list_vault_credentials | vault_list | vault_run | capability_report | capability_search | context_pack | list_uploads | download_file | view_image | recent_results | tool_batch | update_plan | plan_status | job_status | job_stop | plugin_list | plugin_run",
   "args": {},
   "cwd": ".",
   "mode": "safe",
@@ -149,6 +151,8 @@ Examples:
 {"tool":"write_file","args":{"path":"notes.txt","content":"hello\\n"},"mode":"safe","reason":"create a note"}
 {"tool":"git","args":{"args":["status","--short"]},"cwd":".","mode":"safe","reason":"inspect git status"}
 {"tool":"omnidoer_credential_request","args":{"origin":"https://github.com","summary":"Need GitHub access for a reviewed repository operation","ttl":"10m"},"mode":"safe","reason":"ask the paired Control Client for a missing credential without exposing it to Handex"}
+{"tool":"omnidoer_credential_list","args":{},"mode":"safe","reason":"inspect configured OmniDoer vault credential metadata without secrets"}
+{"tool":"omnidoer_vault_unlock","args":{},"mode":"safe","reason":"verify the configured OmniDoer vault can be unlocked"}
 {"tool":"omnidoer_credential_save_request","args":{"request_id":"req_example","wait":true,"wait_timeout":"30s"},"mode":"safe","reason":"store the fulfilled Control Client credential request in the OmniDoer vault"}
 {"tool":"omnidoer_request_status","args":{"request_id":"req_example"},"mode":"safe","reason":"check public status for a Control Client request"}
 {"tool":"omnidoer_request_wait","args":{"request_id":"req_example","wait_timeout":"30s"},"mode":"safe","reason":"wait briefly for the user to finish a Control Client request"}
@@ -197,6 +201,8 @@ Vault rules:
 - vault_list returns metadata only for Handex's built-in encrypted vault.
 - vault_run injects one selected Handex vault secret into an environment variable for the approved command; never print or echo that variable.
 - omnidoer_credential_request asks the paired OmniDoer Control Client for a credential; the response is encrypted to OmniDoer and never shown as plaintext in Handex.
+- omnidoer_credential_list returns metadata only from the configured OmniDoer vault.
+- omnidoer_vault_unlock verifies the configured OmniDoer vault and passphrase file; it never returns the passphrase.
 - omnidoer_credential_save_request stores a fulfilled credential request into the configured OmniDoer vault without returning plaintext secrets.
 - omnidoer_request_status and omnidoer_request_wait return public request metadata only; use omnidoer_request_deny to cancel a stale request.
 - omnidoer_task_submit, omnidoer_task_list, omnidoer_task_complete, and omnidoer_task_cancel bridge OmniDoer Control Client task queues; task text is user-visible coordination, not a place for secrets.
@@ -280,6 +286,7 @@ Operating rules:
 - Use Handex skills by listing configured skill roots first, then reading only the relevant SKILL.md instructions; if that SKILL.md references relative files, use read_skill_file for the specific referenced paths.
 - Use git_bootstrap to clone a repository only when the workspace is empty and the URL has no embedded credentials.
 - Use omnidoer_credential_request when a needed credential is missing; never ask the user to paste secrets into chat.
+- Use omnidoer_credential_list to discover existing OmniDoer vault credentials before requesting a new one.
 - Use omnidoer_task_submit and omnidoer_task_list when coordination with the paired OmniDoer Control Client task queue is useful; never put passwords, tokens, or private keys in task text.
 - Use omnidoer_chat_messages, omnidoer_chat_next, and omnidoer_chat_reply when the paired OmniDoer Control Client chat stream is part of the task; never put passwords, tokens, or private keys in chat text.
 - Use omnidoer_doctor, omnidoer_control_status, audit/policy, and telegram status tools to diagnose OmniDoer readiness before assuming the paired runtime is broken.

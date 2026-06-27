@@ -100,6 +100,8 @@ Built-in tools:
 - `vault_list`
 - `vault_run`
 - `omnidoer_credential_request`
+- `omnidoer_credential_list`
+- `omnidoer_vault_unlock`
 - `omnidoer_credential_save_request`
 - `omnidoer_request_status`
 - `omnidoer_request_wait`
@@ -245,6 +247,10 @@ through Handex or the web LLM. Use `omnidoer_request_status` or
 `omnidoer_credential_save_request` to store a fulfilled request into the
 configured OmniDoer vault. `omnidoer_request_deny` cancels a stale request.
 
+`omnidoer_credential_list` lists configured OmniDoer vault credential metadata,
+and `omnidoer_vault_unlock` verifies the configured vault/passphrase file
+without returning the passphrase.
+
 `omnidoer_task_submit`, `omnidoer_task_list`, `omnidoer_task_complete`, and
 `omnidoer_task_cancel` bridge OmniDoer's Control Client task queue. They are
 for reviewed coordination with a paired client, for example handing off a
@@ -307,6 +313,8 @@ LLM how to behave like a coding agent inside the Hand Loop:
   through `capability_search`
 - use skills by asking Handex to list/read configured `SKILL.md` files
 - view vault credential metadata without exposing secrets
+- list configured OmniDoer vault credential metadata and verify vault unlock
+  readiness without exposing passphrases
 - run reviewed commands with local vault secrets injected through environment variables
 - request missing credentials through the paired OmniDoer Control Client without
   pasting secrets into chat
@@ -488,6 +496,10 @@ The related tools are:
 
 - `omnidoer_credential_request`: ask the paired Control Client for a missing
   credential without exposing plaintext to Handex
+- `omnidoer_credential_list`: list configured OmniDoer vault credential
+  metadata without plaintext secrets
+- `omnidoer_vault_unlock`: verify the configured OmniDoer vault/passphrase file
+  can be unlocked without returning the passphrase
 - `omnidoer_credential_save_request`: store a fulfilled request in the
   configured OmniDoer vault without returning plaintext secrets
 - `omnidoer_request_status`: inspect public metadata for pending or completed

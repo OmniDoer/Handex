@@ -68,6 +68,12 @@ secrets in the paired OmniDoer Control Client, not in Handex or the web LLM
 transcript; Handex only sees public request metadata and can deny stale requests
 with `omnidoer_request_deny`.
 
+Configured OmniDoer vault metadata can be listed with
+`omnidoer_credential_list`, and the configured vault/passphrase file can be
+checked with `omnidoer_vault_unlock`. Both tools return public metadata/status
+only; direct `cred add` is intentionally not exposed because credentials should
+enter through the Control Client request flow rather than chat text.
+
 OmniDoer Control Client task queues are exposed through
 `omnidoer_task_submit`, `omnidoer_task_list`, `omnidoer_task_complete`, and
 `omnidoer_task_cancel`. These tools are for reviewed coordination with a paired

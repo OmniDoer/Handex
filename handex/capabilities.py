@@ -39,6 +39,8 @@ BUILTIN_TOOL_CATALOG: list[dict[str, str]] = [
     {"id": "vault_list", "description": "List local Handex vault item metadata without secrets."},
     {"id": "vault_run", "description": "Run a reviewed command with one local Handex vault secret injected into an environment variable."},
     {"id": "omnidoer_credential_request", "description": "Create an OmniDoer Control Client credential request without exposing the secret to Handex."},
+    {"id": "omnidoer_credential_list", "description": "List configured OmniDoer vault credential metadata without plaintext secrets."},
+    {"id": "omnidoer_vault_unlock", "description": "Verify the configured OmniDoer vault can be unlocked without exposing its passphrase."},
     {"id": "omnidoer_credential_save_request", "description": "Store a fulfilled OmniDoer credential request into the configured OmniDoer vault."},
     {"id": "omnidoer_request_status", "description": "Read public metadata for OmniDoer Control Client requests."},
     {"id": "omnidoer_request_wait", "description": "Wait briefly for an OmniDoer Control Client request to complete."},

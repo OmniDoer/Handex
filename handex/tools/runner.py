@@ -61,6 +61,7 @@ SAFE_BATCH_TOOLS = {
     "skill_pack",
     "list_vault_credentials",
     "vault_list",
+    "omnidoer_credential_list",
     "capability_report",
     "capability_search",
     "context_pack",
@@ -333,8 +334,12 @@ def preview_command(command: dict[str, Any]) -> str:
         return f"omnidoer github api {method} {args.get('path') or ''}"
     if tool == "omnidoer_credential_request":
         return f"omnidoer cred request {args.get('origin') or ''}"
+    if tool == "omnidoer_credential_list":
+        return "omnidoer cred list"
     if tool == "omnidoer_credential_save_request":
         return f"omnidoer cred save-request {args.get('request_id') or args.get('id') or ''}"
+    if tool == "omnidoer_vault_unlock":
+        return "omnidoer vault unlock"
     if tool == "omnidoer_request_status":
         return f"omnidoer control requests {args.get('request_id') or args.get('id') or ''}"
     if tool == "omnidoer_request_wait":
@@ -586,6 +591,13 @@ def omnidoer_vault_args() -> list[str]:
     return ["--vault", vault_path, "--passphrase-file", passphrase_file]
 
 
+def omnidoer_vault_path_arg() -> list[str]:
+    vault_path = str(getattr(settings, "omnidoer_vault_path", "") or "")
+    if not vault_path:
+        raise ToolError("OmniDoer vault path is not configured. Set HANDEX_OMNIDOER_VAULT_PATH.")
+    return ["--vault", vault_path]
+
+
 def optional_credential_args(args: dict[str, Any]) -> list[str]:
     credential_id = str(args.get("credential_id") or args.get("id") or "")
     return ["--credential-id", credential_id] if credential_id else []
@@ -801,6 +813,27 @@ def run_omnidoer_credential_request(command: dict[str, Any], workspace: Path, mo
         payload["next_tools"] = ["omnidoer_request_status", "omnidoer_request_wait", "omnidoer_credential_save_request", "omnidoer_request_deny"]
     output = json.dumps(payload, ensure_ascii=False, indent=2)
     return ToolResult("omnidoer_credential_request", command, mode, result.cwd, result.final_command, result.exit_code, output + "\n", result.stderr)
+
+
+def run_omnidoer_credential_list(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    cwd = resolve_cwd(command, workspace, mode)
+    result = run_omnidoer_subprocess(command, tool="omnidoer_credential_list", mode=mode, cwd=cwd, argv=[*omnidoer_base_argv(), "cred", "list", *omnidoer_vault_path_arg()])
+    payload = parse_public_json_or_kv(result.stdout)
+    output = public_json(payload)
+    return ToolResult("omnidoer_credential_list", command, mode, result.cwd, result.final_command, result.exit_code, output + "\n", result.stderr)
+
+
+def run_omnidoer_vault_unlock(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    cwd = resolve_cwd(command, workspace, mode)
+    vault_args = omnidoer_vault_args()
+    argv = [*omnidoer_base_argv(), "vault", "unlock", "--path", vault_args[1], "--passphrase-file", vault_args[3]]
+    result = run_omnidoer_subprocess(command, tool="omnidoer_vault_unlock", mode=mode, cwd=cwd, argv=argv)
+    payload = parse_public_json_or_kv(result.stdout)
+    if not isinstance(payload, dict):
+        payload = {"result": payload}
+    payload["secret_exposed_to_model"] = False
+    output = public_json(payload)
+    return ToolResult("omnidoer_vault_unlock", command, mode, result.cwd, result.final_command, result.exit_code, output + "\n", result.stderr)
 
 
 def run_omnidoer_credential_save_request(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
@@ -2147,6 +2180,8 @@ registry.register("background_shell", run_background_shell)
 registry.register("python", run_python)
 registry.register("git", run_git)
 registry.register("omnidoer_credential_request", run_omnidoer_credential_request)
+registry.register("omnidoer_credential_list", run_omnidoer_credential_list)
+registry.register("omnidoer_vault_unlock", run_omnidoer_vault_unlock)
 registry.register("omnidoer_credential_save_request", run_omnidoer_credential_save_request)
 registry.register("omnidoer_request_status", run_omnidoer_request_status)
 registry.register("omnidoer_request_wait", run_omnidoer_request_wait)
