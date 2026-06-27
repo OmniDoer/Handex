@@ -96,12 +96,24 @@ OmniDoer diagnostics and status commands are exposed through `omnidoer_doctor`,
 `omnidoer_telegram_status`. `omnidoer_browser_open` opens a reviewed URL through
 OmniDoer's browser bridge; Safe Mode requires HTTPS.
 
+OmniDoer runtime dry-runs and self-tests are exposed through
+`omnidoer_console_dry_run`, `omnidoer_upgrade_dry_run`, and
+`omnidoer_mcp_self_test`. These preview the Codex console wrapper, preview
+upgrade actions, and run the MCP server self-test without launching Codex,
+installing files, or starting a persistent MCP process. Safe Mode permits an
+upgrade `branch`; overriding `install_dir` is YOLO-only.
+
 Mutating Control Client management commands are YOLO-only:
 `omnidoer_control_revoke_device`, `omnidoer_control_revoke_session`,
 `omnidoer_control_enable_sync`, `omnidoer_request_challenge`,
 `omnidoer_request_takeover`, and `omnidoer_request_release`. Safe Mode rejects
 them before invoking OmniDoer because they change device/session access, sync
 state, or request ownership.
+
+Pairing, `init`, `control serve`, `demo start`, `agent run`, non-dry-run
+`console`, and non-dry-run `upgrade` are intentionally not normal Safe tools
+because they can create credentials, start services, launch real agent work, or
+mutate runtime state.
 
 Workspace uploads are exposed through the project page and the `list_uploads`
 tool. Uploaded files live under `.handex_uploads/` inside the workspace, and

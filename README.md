@@ -136,6 +136,9 @@ Built-in tools:
 - `omnidoer_audit_verify`
 - `omnidoer_policy_test`
 - `omnidoer_telegram_status`
+- `omnidoer_console_dry_run`
+- `omnidoer_upgrade_dry_run`
+- `omnidoer_mcp_self_test`
 - `omnidoer_browser_open`
 - `capability_report`
 - `capability_search`
@@ -280,11 +283,22 @@ policy, and notification diagnostics through argv calls. `omnidoer_browser_open`
 opens a reviewed URL through OmniDoer's browser bridge; Safe Mode requires
 HTTPS.
 
+`omnidoer_console_dry_run`, `omnidoer_upgrade_dry_run`, and
+`omnidoer_mcp_self_test` cover runtime probes that are safe to run from Handex:
+they preview the Codex console wrapper, preview an OmniDoer upgrade, and run the
+MCP server self-test without launching Codex, installing files, or starting a
+persistent MCP process. `omnidoer_upgrade_dry_run` allows a branch in Safe Mode;
+overriding `install_dir` requires YOLO Mode after review.
+
 Mutating Control Client management commands are exposed separately and are
 YOLO-only: `omnidoer_control_revoke_device`,
 `omnidoer_control_revoke_session`, `omnidoer_control_enable_sync`,
 `omnidoer_request_challenge`, `omnidoer_request_takeover`, and
 `omnidoer_request_release`. Safe Mode rejects them before invoking OmniDoer.
+OmniDoer commands that generate pairing credentials, initialize installs, start
+persistent services, launch real Codex sessions, or run autonomous agent tasks
+are intentionally left to reviewed shell/background commands instead of normal
+Safe tools.
 
 `plugin_list` and `plugin_run` expose configured command plugins from
 `HANDEX_PLUGIN_ROOTS`. A plugin is a directory containing `plugin.json`; it
@@ -336,6 +350,8 @@ LLM how to behave like a coding agent inside the Hand Loop:
   including streaming response records
 - inspect OmniDoer doctor/status/devices/sessions/tunnel/security/sync,
   audit, policy, and Telegram notification status without dropping to shell
+- preview OmniDoer console/upgrade behavior and run the MCP self-test without
+  launching persistent runtime processes
 - perform reviewed YOLO-only Control Client management actions such as
   revoking devices/sessions, enabling sync, or changing request ownership
 - open reviewed HTTPS URLs through OmniDoer's browser bridge
@@ -556,6 +572,12 @@ The related tools are:
 - `omnidoer_audit_verify`: verify audit log integrity
 - `omnidoer_policy_test`: run OmniDoer policy self-tests
 - `omnidoer_telegram_status`: inspect Telegram notification bridge status
+- `omnidoer_console_dry_run`: preview the Codex console wrapper command without
+  launching Codex
+- `omnidoer_upgrade_dry_run`: preview upgrade actions without installing files;
+  Safe Mode permits `branch`, while `install_dir` override is YOLO-only
+- `omnidoer_mcp_self_test`: run `omnidoer mcp serve --self-test` without
+  starting a persistent MCP server
 - `omnidoer_browser_open`: open a reviewed URL; Safe Mode requires HTTPS
 - `omnidoer_git`: run `omnidoer git run` with the configured vault bridge
 - `omnidoer_github_api`: run `omnidoer github api` with the configured vault
@@ -565,6 +587,9 @@ Safe Mode only permits read-only `git ls-remote` and GitHub `GET` requests.
 Use YOLO Mode after review for `push`, release creation, issue edits, workflow
 dispatches, or other mutating operations. Command output is still treated as
 heuristically redacted; do not ask tools to print raw tokens or passwords.
+Pairing, `init`, `control serve`, `demo start`, `agent run`, non-dry-run
+`console`, and non-dry-run `upgrade` are not exposed as normal Safe tools
+because they can create credentials, start services, or mutate runtime state.
 
 Credential requests are intentionally public-metadata-only. Handex can create,
 poll, wait for, or deny the request, but it never receives the plaintext

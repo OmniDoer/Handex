@@ -86,6 +86,9 @@ SAFE_BATCH_TOOLS = {
     "omnidoer_audit_verify",
     "omnidoer_policy_test",
     "omnidoer_telegram_status",
+    "omnidoer_console_dry_run",
+    "omnidoer_upgrade_dry_run",
+    "omnidoer_mcp_self_test",
     "plugin_list",
 }
 SAFE_BATCH_GIT_COMMANDS = {"status", "log", "show", "diff", "rev-parse", "ls-files", "grep", "describe", "blame"}
@@ -412,6 +415,27 @@ def preview_command(command: dict[str, Any]) -> str:
         return "omnidoer policy test"
     if tool == "omnidoer_telegram_status":
         return "omnidoer telegram status"
+    if tool == "omnidoer_console_dry_run":
+        raw_codex_args = args.get("codex_args")
+        if isinstance(raw_codex_args, list):
+            codex_args = [str(item) for item in raw_codex_args]
+        elif isinstance(raw_codex_args, str):
+            try:
+                codex_args = shlex.split(raw_codex_args)
+            except ValueError:
+                codex_args = [raw_codex_args]
+        else:
+            codex_args = []
+        return " ".join(["omnidoer", "console", "--dry-run", *(shlex.quote(item) for item in codex_args)])
+    if tool == "omnidoer_upgrade_dry_run":
+        upgrade_args = ["omnidoer", "upgrade", "--dry-run"]
+        if args.get("branch"):
+            upgrade_args.extend(["--branch", str(args.get("branch"))])
+        if args.get("install_dir"):
+            upgrade_args.extend(["--install-dir", str(args.get("install_dir"))])
+        return " ".join(shlex.quote(item) for item in upgrade_args)
+    if tool == "omnidoer_mcp_self_test":
+        return "omnidoer mcp serve --self-test"
     if tool == "omnidoer_browser_open":
         return f"omnidoer browser open {args.get('url') or ''}"
     if tool == "git_bootstrap":
@@ -745,6 +769,35 @@ def plain_token_arg(args: dict[str, Any], key: str, tool: str, *, required: bool
     if value and not re.fullmatch(r"[A-Za-z0-9_.:-]+", value):
         raise ToolError(f"{tool} args.{key} must contain only letters, numbers, dot, underscore, colon, or dash")
     return value
+
+
+def safe_cli_value_arg(args: dict[str, Any], key: str, tool: str, *, required: bool = False, max_len: int = 256) -> str:
+    value = str(args.get(key) or "").strip()
+    if required and not value:
+        raise ToolError(f"{tool} args.{key} is required")
+    if not value:
+        return ""
+    if len(value) > max_len or any(ord(char) < 32 for char in value) or re.search(r"\s", value):
+        raise ToolError(f"{tool} args.{key} contains invalid whitespace/control characters or is too long")
+    if value.startswith("-"):
+        raise ToolError(f"{tool} args.{key} must not start with '-'")
+    return value
+
+
+def string_list_arg(args: dict[str, Any], key: str, tool: str) -> list[str]:
+    value = args.get(key)
+    if value in (None, ""):
+        return []
+    if isinstance(value, str):
+        items = shlex.split(value)
+    elif isinstance(value, list):
+        items = [str(item) for item in value]
+    else:
+        raise ToolError(f"{tool} args.{key} must be a string or list of strings")
+    for item in items:
+        if "\x00" in item or any(ord(char) < 32 for char in item):
+            raise ToolError(f"{tool} args.{key} contains an invalid argument")
+    return items
 
 
 def require_yolo(mode: str, tool: str, reason: str) -> None:
@@ -1291,6 +1344,30 @@ def run_omnidoer_policy_test(command: dict[str, Any], workspace: Path, mode: str
 
 def run_omnidoer_telegram_status(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
     return run_omnidoer_public_command(command, workspace, mode, "omnidoer_telegram_status", [*omnidoer_base_argv(), "telegram", "status"])
+
+
+def run_omnidoer_console_dry_run(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    args = command_args(command)
+    codex_args = string_list_arg(args, "codex_args", "omnidoer_console_dry_run")
+    return run_omnidoer_public_command(command, workspace, mode, "omnidoer_console_dry_run", [*omnidoer_base_argv(), "console", "--dry-run", *codex_args])
+
+
+def run_omnidoer_upgrade_dry_run(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    args = command_args(command)
+    argv = [*omnidoer_base_argv(), "upgrade", "--dry-run"]
+    branch = safe_cli_value_arg(args, "branch", "omnidoer_upgrade_dry_run")
+    if branch:
+        argv.extend(["--branch", branch])
+    install_dir = str(args.get("install_dir") or "").strip()
+    if install_dir:
+        if mode == "safe":
+            raise ToolError("Safe Mode omnidoer_upgrade_dry_run uses the default install directory. Use YOLO Mode after review to override install_dir.")
+        argv.extend(["--install-dir", install_dir])
+    return run_omnidoer_public_command(command, workspace, mode, "omnidoer_upgrade_dry_run", argv)
+
+
+def run_omnidoer_mcp_self_test(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    return run_omnidoer_public_command(command, workspace, mode, "omnidoer_mcp_self_test", [*omnidoer_base_argv(), "mcp", "serve", "--self-test"])
 
 
 def run_omnidoer_browser_open(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
@@ -2288,6 +2365,9 @@ registry.register("omnidoer_audit_tail", run_omnidoer_audit_tail)
 registry.register("omnidoer_audit_verify", run_omnidoer_audit_verify)
 registry.register("omnidoer_policy_test", run_omnidoer_policy_test)
 registry.register("omnidoer_telegram_status", run_omnidoer_telegram_status)
+registry.register("omnidoer_console_dry_run", run_omnidoer_console_dry_run)
+registry.register("omnidoer_upgrade_dry_run", run_omnidoer_upgrade_dry_run)
+registry.register("omnidoer_mcp_self_test", run_omnidoer_mcp_self_test)
 registry.register("omnidoer_browser_open", run_omnidoer_browser_open)
 registry.register("omnidoer_git", run_omnidoer_git)
 registry.register("omnidoer_github_api", run_omnidoer_github_api)

@@ -104,6 +104,21 @@ class RunnerTests(unittest.TestCase):
                     print(json.dumps({"status": "passed"}))
                 elif argv[:2] == ["telegram", "status"]:
                     print(json.dumps({"status": "configured"}))
+                elif argv[:2] == ["console", "--dry-run"]:
+                    print(json.dumps({
+                        "status": "dry_run",
+                        "argv": argv,
+                        "codex_args": argv[2:],
+                    }))
+                elif argv[:2] == ["upgrade", "--dry-run"]:
+                    print(json.dumps({
+                        "status": "dry_run",
+                        "argv": argv,
+                        "branch": argv[argv.index("--branch") + 1] if "--branch" in argv else None,
+                        "install_dir": argv[argv.index("--install-dir") + 1] if "--install-dir" in argv else None,
+                    }))
+                elif argv[:3] == ["mcp", "serve", "--self-test"]:
+                    print(json.dumps({"status": "ok", "self_test": True, "argv": argv}))
                 elif argv[:2] == ["browser", "open"]:
                     print(json.dumps({"status": "opened", "url": argv[2]}))
                 elif argv[:2] == ["cred", "save-request"]:
@@ -281,10 +296,13 @@ class RunnerTests(unittest.TestCase):
         capabilities.settings = types.SimpleNamespace(skill_roots=[], vault_metadata_command="", help_commands=[])
         with tempfile.TemporaryDirectory() as tmp:
             result = registry.run({"tool": "capability_search", "args": {"query": "patch", "limit": 5}}, tmp, "safe")
+            runtime = registry.run({"tool": "capability_search", "args": {"query": "mcp self-test", "limit": 5}}, tmp, "safe")
 
         payload = json.loads(result.stdout)
         self.assertEqual(result.exit_code, 0)
         self.assertIn(("tool", "apply_patch"), {(item["type"], item["id"]) for item in payload["results"]})
+        runtime_payload = json.loads(runtime.stdout)
+        self.assertIn(("tool", "omnidoer_mcp_self_test"), {(item["type"], item["id"]) for item in runtime_payload["results"]})
 
     def test_omnidoer_git_uses_configured_vault_bridge_without_secret_env(self):
         old_value = os.environ.get("HANDEX_VAULT_KEY")
@@ -571,6 +589,41 @@ class RunnerTests(unittest.TestCase):
                 registry.run({"tool": "omnidoer_control_sync_status", "args": {"codex_bin": "/tmp/codex"}}, tmp, "safe")
             yolo = registry.run({"tool": "omnidoer_control_sync_status", "args": {"codex_bin": "/tmp/codex"}}, tmp, "yolo")
             self.assertTrue(json.loads(yolo.stdout)["has_codex_bin"])
+
+    def test_omnidoer_runtime_dry_run_tools_are_safe_and_public(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            script = self.write_fake_omnidoer(Path(tmp))
+            runner.settings = self.fake_omnidoer_settings(script)
+
+            console = registry.run({"tool": "omnidoer_console_dry_run", "args": {"codex_args": ["--help"]}}, tmp, "safe")
+            upgrade = registry.run({"tool": "omnidoer_upgrade_dry_run", "args": {"branch": "feature/runtime-probes"}}, tmp, "safe")
+            mcp = registry.run({"tool": "omnidoer_mcp_self_test", "args": {}}, tmp, "safe")
+            console_preview = registry.preview({"tool": "omnidoer_console_dry_run", "args": {"codex_args": ["--help"]}}, tmp, "safe")
+            upgrade_preview = registry.preview({"tool": "omnidoer_upgrade_dry_run", "args": {"branch": "feature/runtime-probes"}}, tmp, "safe")
+            preview = registry.preview({"tool": "omnidoer_mcp_self_test", "args": {}}, tmp, "safe")
+
+        console_payload = json.loads(console.stdout)
+        self.assertEqual(console_payload["status"], "dry_run")
+        self.assertEqual(console_payload["argv"][:2], ["console", "--dry-run"])
+        self.assertEqual(console_payload["codex_args"], ["--help"])
+        upgrade_payload = json.loads(upgrade.stdout)
+        self.assertEqual(upgrade_payload["branch"], "feature/runtime-probes")
+        self.assertIsNone(upgrade_payload["install_dir"])
+        self.assertEqual(json.loads(mcp.stdout)["self_test"], True)
+        self.assertEqual(console_preview.final_command, "omnidoer console --dry-run --help")
+        self.assertEqual(upgrade_preview.final_command, "omnidoer upgrade --dry-run --branch feature/runtime-probes")
+        self.assertEqual(preview.final_command, "omnidoer mcp serve --self-test")
+
+    def test_omnidoer_upgrade_dry_run_safe_blocks_install_dir_override(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            script = self.write_fake_omnidoer(Path(tmp))
+            runner.settings = self.fake_omnidoer_settings(script)
+
+            with self.assertRaises(ToolError):
+                registry.run({"tool": "omnidoer_upgrade_dry_run", "args": {"install_dir": "/opt/omnidoer"}}, tmp, "safe")
+            yolo = registry.run({"tool": "omnidoer_upgrade_dry_run", "args": {"install_dir": "/opt/omnidoer"}}, tmp, "yolo")
+
+        self.assertEqual(json.loads(yolo.stdout)["install_dir"], "/opt/omnidoer")
 
     def test_omnidoer_control_management_tools_are_yolo_only(self):
         commands = [
