@@ -104,6 +104,10 @@ Built-in tools:
 - `omnidoer_request_status`
 - `omnidoer_request_wait`
 - `omnidoer_request_deny`
+- `omnidoer_task_submit`
+- `omnidoer_task_list`
+- `omnidoer_task_complete`
+- `omnidoer_task_cancel`
 - `capability_report`
 - `capability_search`
 - `context_pack`
@@ -220,6 +224,12 @@ through Handex or the web LLM. Use `omnidoer_request_status` or
 `omnidoer_credential_save_request` to store a fulfilled request into the
 configured OmniDoer vault. `omnidoer_request_deny` cancels a stale request.
 
+`omnidoer_task_submit`, `omnidoer_task_list`, `omnidoer_task_complete`, and
+`omnidoer_task_cancel` bridge OmniDoer's Control Client task queue. They are
+for reviewed coordination with a paired client, for example handing off a
+manual check or inspecting phone-submitted task state. Task text is not a secret
+transport; credentials should use the credential request tools instead.
+
 `plugin_list` and `plugin_run` expose configured command plugins from
 `HANDEX_PLUGIN_ROOTS`. A plugin is a directory containing `plugin.json`; it
 declares a command argv, description, timeout, and whether it is allowed in
@@ -262,6 +272,8 @@ LLM how to behave like a coding agent inside the Hand Loop:
 - run reviewed commands with local vault secrets injected through environment variables
 - request missing credentials through the paired OmniDoer Control Client without
   pasting secrets into chat
+- submit, list, complete, or cancel paired OmniDoer Control Client tasks for
+  reviewed human/device coordination
 - run reviewed Git/GitHub operations with existing OmniDoer vault credentials
   through `omnidoer_git` and `omnidoer_github_api`
 - keep summaries durable between web LLM sessions
@@ -439,6 +451,12 @@ The related tools are:
   Control Client requests
 - `omnidoer_request_wait`: wait briefly for a Control Client request to finish
 - `omnidoer_request_deny`: deny or cancel a no-longer-needed request
+- `omnidoer_task_submit`: submit reviewed task text to the paired OmniDoer
+  Control Client queue
+- `omnidoer_task_list`: inspect public task queue metadata, optionally filtered
+  by `task_id`, `status`, or `limit`
+- `omnidoer_task_complete`: mark a reviewed task as completed
+- `omnidoer_task_cancel`: cancel a no-longer-needed task
 - `omnidoer_git`: run `omnidoer git run` with the configured vault bridge
 - `omnidoer_github_api`: run `omnidoer github api` with the configured vault
   bridge
@@ -451,6 +469,10 @@ heuristically redacted; do not ask tools to print raw tokens or passwords.
 Credential requests are intentionally public-metadata-only. Handex can create,
 poll, wait for, or deny the request, but it never receives the plaintext
 password, TOTP seed, or encrypted response body.
+
+Control Client tasks are also treated as public coordination text. Handex
+redacts secret-looking task fields in Tool Results, but users and LLMs should
+not put passwords, tokens, private keys, or TOTP seeds into task text.
 
 ## Capability Report
 

@@ -19,7 +19,7 @@ from typing import Any, Callable
 from ..bootstrap import BootstrapError, bootstrap_workspace_from_git, redacted_repo_url
 from ..capabilities import configured_capability_report, list_skills, list_vault_metadata, read_skill, read_skill_file, search_capabilities, skill_pack_prompt
 from ..config import settings
-from ..context import build_context_pack
+from ..context import build_context_pack, redact_text as redact_context_text
 from ..db import get_project_plan, save_project_plan
 from ..files import FileAccessError, file_info_payload, resolve_workspace_file
 from ..history import project_logs_for_workspace
@@ -71,11 +71,14 @@ SAFE_BATCH_TOOLS = {
     "plan_status",
     "job_status",
     "omnidoer_request_status",
+    "omnidoer_task_list",
     "plugin_list",
 }
 SAFE_BATCH_GIT_COMMANDS = {"status", "log", "show", "diff", "rev-parse", "ls-files", "grep", "describe", "blame"}
 SAFE_OMNIDOER_GIT_COMMANDS = {"ls-remote"}
 SAFE_GITHUB_API_METHODS = {"GET"}
+SENSITIVE_OUTPUT_KEY_RE = re.compile(r"(?i)(password|passwd|passphrase|secret|token|api[_ -]?key|private[_ -]?key|ciphertext|totp)")
+PUBLIC_OUTPUT_KEY_ALLOWLIST = {"secret_exposed_to_model", "secret_fields_allowed"}
 MAX_BATCH_COMMANDS = 12
 
 
@@ -325,6 +328,15 @@ def preview_command(command: dict[str, Any]) -> str:
         return f"omnidoer control wait-request {args.get('request_id') or args.get('id') or ''}"
     if tool == "omnidoer_request_deny":
         return f"omnidoer control deny {args.get('request_id') or args.get('id') or ''}"
+    if tool == "omnidoer_task_submit":
+        task = str(args.get("task") or args.get("text") or "")
+        return f"omnidoer control submit-task {shlex.quote(redact_context_text(task)[:80])}"
+    if tool == "omnidoer_task_list":
+        return f"omnidoer control tasks {args.get('task_id') or args.get('id') or args.get('status') or ''}"
+    if tool == "omnidoer_task_complete":
+        return f"omnidoer control complete-task {args.get('task_id') or args.get('id') or ''}"
+    if tool == "omnidoer_task_cancel":
+        return f"omnidoer control cancel-task {args.get('task_id') or args.get('id') or ''}"
     if tool == "git_bootstrap":
         return f"git clone {redacted_repo_url(str(args.get('repo_url') or args.get('url') or ''))}"
     if tool == "apply_patch":
@@ -560,6 +572,57 @@ def request_id_arg(args: dict[str, Any], tool: str) -> str:
     return request_id
 
 
+def task_id_arg(args: dict[str, Any], tool: str) -> str:
+    task_id = str(args.get("task_id") or args.get("id") or "")
+    if not task_id:
+        raise ToolError(f"{tool} args.task_id is required")
+    if not re.fullmatch(r"task_[A-Za-z0-9_:-]+", task_id):
+        raise ToolError(f"{tool} args.task_id must look like task_<id>")
+    return task_id
+
+
+def find_task_id(value: Any) -> str:
+    if isinstance(value, dict):
+        direct = str(value.get("task_id") or value.get("id") or "")
+        if re.fullmatch(r"task_[A-Za-z0-9_:-]+", direct):
+            return direct
+        for item in value.values():
+            found = find_task_id(item)
+            if found:
+                return found
+    elif isinstance(value, list):
+        for item in value:
+            found = find_task_id(item)
+            if found:
+                return found
+    elif isinstance(value, str):
+        match = re.search(r"\btask_[A-Za-z0-9_:-]+\b", value)
+        if match:
+            return match.group(0)
+    return ""
+
+
+def public_payload(value: Any) -> Any:
+    if isinstance(value, dict):
+        payload: dict[str, Any] = {}
+        for key, item in value.items():
+            key_text = str(key)
+            if key_text not in PUBLIC_OUTPUT_KEY_ALLOWLIST and SENSITIVE_OUTPUT_KEY_RE.search(key_text):
+                payload[key_text] = "[REDACTED]"
+            else:
+                payload[key_text] = public_payload(item)
+        return payload
+    if isinstance(value, list):
+        return [public_payload(item) for item in value]
+    if isinstance(value, str):
+        return redact_context_text(value)
+    return value
+
+
+def public_json(value: Any) -> str:
+    return json.dumps(public_payload(value), ensure_ascii=False, indent=2)
+
+
 def validate_control_origin(origin: str, mode: str) -> None:
     parsed = urlparse(origin)
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
@@ -661,6 +724,80 @@ def run_omnidoer_request_deny(command: dict[str, Any], workspace: Path, mode: st
     status = "denied" if result.exit_code == 0 else "error"
     output = json.dumps({"request_id": request_id, "status": status, "secret_exposed_to_model": False}, ensure_ascii=False, indent=2)
     return ToolResult("omnidoer_request_deny", command, mode, result.cwd, result.final_command, result.exit_code, output + "\n", result.stderr)
+
+
+def run_omnidoer_task_submit(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    cwd = resolve_cwd(command, workspace, mode)
+    args = command_args(command)
+    task = str(args.get("task") or args.get("text") or "")
+    if not task.strip():
+        raise ToolError("omnidoer_task_submit args.task is required")
+    result = run_omnidoer_subprocess(command, tool="omnidoer_task_submit", mode=mode, cwd=cwd, argv=[*omnidoer_base_argv(), "control", "submit-task", task])
+    payload = parse_public_json_or_kv(result.stdout)
+    if not isinstance(payload, dict):
+        payload = {"result": payload}
+    task_id = find_task_id(payload)
+    if task_id:
+        payload.setdefault("task_id", task_id)
+    if result.exit_code == 0:
+        payload.setdefault("next_tools", ["omnidoer_task_list", "omnidoer_task_cancel", "omnidoer_task_complete"])
+    output = public_json(payload)
+    return ToolResult("omnidoer_task_submit", command, mode, result.cwd, redact_command_string(result.final_command), result.exit_code, output + "\n", result.stderr)
+
+
+def run_omnidoer_task_list(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    cwd = resolve_cwd(command, workspace, mode)
+    args = command_args(command)
+    task_id = str(args.get("task_id") or args.get("id") or "")
+    status_filter = str(args.get("status") or "").strip().lower()
+    result = run_omnidoer_subprocess(command, tool="omnidoer_task_list", mode=mode, cwd=cwd, argv=[*omnidoer_base_argv(), "control", "tasks"])
+    payload = parse_public_json_or_kv(result.stdout)
+    if task_id:
+        if not re.fullmatch(r"task_[A-Za-z0-9_:-]+", task_id):
+            raise ToolError("omnidoer_task_list args.task_id must look like task_<id>")
+        if isinstance(payload, list):
+            matches = [item for item in payload if isinstance(item, dict) and item.get("task_id") == task_id]
+            payload = matches[0] if matches else {"status": "not_found", "task_id": task_id}
+    if status_filter and isinstance(payload, list):
+        payload = [item for item in payload if isinstance(item, dict) and str(item.get("status") or "").lower() == status_filter]
+    if isinstance(payload, list):
+        try:
+            limit = int(args.get("limit") or len(payload))
+        except (TypeError, ValueError):
+            limit = len(payload)
+        payload = payload[: max(1, min(limit, 100))]
+    output = public_json(payload)
+    return ToolResult("omnidoer_task_list", command, mode, result.cwd, result.final_command, result.exit_code, output + "\n", result.stderr)
+
+
+def run_omnidoer_task_complete(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    cwd = resolve_cwd(command, workspace, mode)
+    args = command_args(command)
+    task_id = task_id_arg(args, "omnidoer_task_complete")
+    result = run_omnidoer_subprocess(command, tool="omnidoer_task_complete", mode=mode, cwd=cwd, argv=[*omnidoer_base_argv(), "control", "complete-task", task_id])
+    payload = parse_public_json_or_kv(result.stdout)
+    if not isinstance(payload, dict):
+        payload = {"result": payload}
+    payload.setdefault("task_id", task_id)
+    if result.exit_code == 0:
+        payload.setdefault("status", "completed")
+    output = public_json(payload)
+    return ToolResult("omnidoer_task_complete", command, mode, result.cwd, result.final_command, result.exit_code, output + "\n", result.stderr)
+
+
+def run_omnidoer_task_cancel(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    cwd = resolve_cwd(command, workspace, mode)
+    args = command_args(command)
+    task_id = task_id_arg(args, "omnidoer_task_cancel")
+    result = run_omnidoer_subprocess(command, tool="omnidoer_task_cancel", mode=mode, cwd=cwd, argv=[*omnidoer_base_argv(), "control", "cancel-task", task_id])
+    payload = parse_public_json_or_kv(result.stdout)
+    if not isinstance(payload, dict):
+        payload = {"result": payload}
+    payload.setdefault("task_id", task_id)
+    if result.exit_code == 0:
+        payload.setdefault("status", "cancelled")
+    output = public_json(payload)
+    return ToolResult("omnidoer_task_cancel", command, mode, result.cwd, result.final_command, result.exit_code, output + "\n", result.stderr)
 
 
 def run_omnidoer_git(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
@@ -1617,6 +1754,10 @@ registry.register("omnidoer_credential_save_request", run_omnidoer_credential_sa
 registry.register("omnidoer_request_status", run_omnidoer_request_status)
 registry.register("omnidoer_request_wait", run_omnidoer_request_wait)
 registry.register("omnidoer_request_deny", run_omnidoer_request_deny)
+registry.register("omnidoer_task_submit", run_omnidoer_task_submit)
+registry.register("omnidoer_task_list", run_omnidoer_task_list)
+registry.register("omnidoer_task_complete", run_omnidoer_task_complete)
+registry.register("omnidoer_task_cancel", run_omnidoer_task_cancel)
 registry.register("omnidoer_git", run_omnidoer_git)
 registry.register("omnidoer_github_api", run_omnidoer_github_api)
 registry.register("git_bootstrap", run_git_bootstrap)

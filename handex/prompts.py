@@ -32,6 +32,10 @@ TOOL_NAMES = [
     "omnidoer_request_status",
     "omnidoer_request_wait",
     "omnidoer_request_deny",
+    "omnidoer_task_submit",
+    "omnidoer_task_list",
+    "omnidoer_task_complete",
+    "omnidoer_task_cancel",
     "omnidoer_git",
     "omnidoer_github_api",
     "git_bootstrap",
@@ -108,7 +112,7 @@ DEFAULT_TOOL_PROTOCOL = """When you need Linux tools, output exactly one Tool Co
 
 Schema:
 {
-  "tool": "shell | background_shell | python | read_file | write_file | append_file | replace_file | delete_file | list_files | search_files | grep | git | omnidoer_credential_request | omnidoer_credential_save_request | omnidoer_request_status | omnidoer_request_wait | omnidoer_request_deny | omnidoer_git | omnidoer_github_api | git_bootstrap | apply_patch | list_skills | read_skill | read_skill_file | skill_pack | list_vault_credentials | vault_list | vault_run | capability_report | capability_search | context_pack | list_uploads | download_file | view_image | recent_results | tool_batch | update_plan | plan_status | job_status | job_stop | plugin_list | plugin_run",
+  "tool": "shell | background_shell | python | read_file | write_file | append_file | replace_file | delete_file | list_files | search_files | grep | git | omnidoer_credential_request | omnidoer_credential_save_request | omnidoer_request_status | omnidoer_request_wait | omnidoer_request_deny | omnidoer_task_submit | omnidoer_task_list | omnidoer_task_complete | omnidoer_task_cancel | omnidoer_git | omnidoer_github_api | git_bootstrap | apply_patch | list_skills | read_skill | read_skill_file | skill_pack | list_vault_credentials | vault_list | vault_run | capability_report | capability_search | context_pack | list_uploads | download_file | view_image | recent_results | tool_batch | update_plan | plan_status | job_status | job_stop | plugin_list | plugin_run",
   "args": {},
   "cwd": ".",
   "mode": "safe",
@@ -128,6 +132,10 @@ Examples:
 {"tool":"omnidoer_request_status","args":{"request_id":"req_example"},"mode":"safe","reason":"check public status for a Control Client request"}
 {"tool":"omnidoer_request_wait","args":{"request_id":"req_example","wait_timeout":"30s"},"mode":"safe","reason":"wait briefly for the user to finish a Control Client request"}
 {"tool":"omnidoer_request_deny","args":{"request_id":"req_example"},"mode":"safe","reason":"cancel a no-longer-needed Control Client request"}
+{"tool":"omnidoer_task_submit","args":{"task":"Please review the staged Handex change and report whether it looks ready."},"mode":"safe","reason":"send a reviewed task to the paired OmniDoer Control Client queue"}
+{"tool":"omnidoer_task_list","args":{"status":"pending","limit":10},"mode":"safe","reason":"inspect pending OmniDoer Control Client tasks"}
+{"tool":"omnidoer_task_cancel","args":{"task_id":"task_example"},"mode":"safe","reason":"cancel a no-longer-needed Control Client task"}
+{"tool":"omnidoer_task_complete","args":{"task_id":"task_example"},"mode":"safe","reason":"mark a reviewed Control Client task complete"}
 {"tool":"omnidoer_git","args":{"args":["ls-remote","https://github.com/org/private-repo.git"],"credential_id":"cred_example"},"cwd":".","mode":"safe","reason":"inspect a private Git remote through OmniDoer's vault bridge"}
 {"tool":"omnidoer_github_api","args":{"method":"GET","path":"/user","credential_id":"cred_example"},"mode":"safe","reason":"inspect the authenticated GitHub identity without exposing the token"}
 {"tool":"git_bootstrap","args":{"repo_url":"https://github.com/org/repo.git","branch":"main","depth":1},"mode":"safe","reason":"clone the target repository into an empty workspace"}
@@ -158,6 +166,7 @@ Vault rules:
 - omnidoer_credential_request asks the paired OmniDoer Control Client for a credential; the response is encrypted to OmniDoer and never shown as plaintext in Handex.
 - omnidoer_credential_save_request stores a fulfilled credential request into the configured OmniDoer vault without returning plaintext secrets.
 - omnidoer_request_status and omnidoer_request_wait return public request metadata only; use omnidoer_request_deny to cancel a stale request.
+- omnidoer_task_submit, omnidoer_task_list, omnidoer_task_complete, and omnidoer_task_cancel bridge OmniDoer Control Client task queues; task text is user-visible coordination, not a place for secrets.
 - omnidoer_git and omnidoer_github_api use the server-configured OmniDoer vault bridge; Safe Mode permits only read-only ls-remote and GitHub GET.
 - Never ask Handex to print passwords, tokens, private keys, or decrypted secrets.
 - For credentialed git or GitHub work, prefer omnidoer_git or omnidoer_github_api; use reviewed shell only for credentialed flows those tools do not cover.
@@ -236,6 +245,7 @@ Operating rules:
 - Use Handex skills by listing configured skill roots first, then reading only the relevant SKILL.md instructions; if that SKILL.md references relative files, use read_skill_file for the specific referenced paths.
 - Use git_bootstrap to clone a repository only when the workspace is empty and the URL has no embedded credentials.
 - Use omnidoer_credential_request when a needed credential is missing; never ask the user to paste secrets into chat.
+- Use omnidoer_task_submit and omnidoer_task_list when coordination with the paired OmniDoer Control Client task queue is useful; never put passwords, tokens, or private keys in task text.
 - Use omnidoer_git or omnidoer_github_api for reviewed Git/GitHub operations that need an existing OmniDoer vault credential.
 - Use context_pack for Codex-style workspace orientation when Git status, inherited AGENTS.md rules, manifests, or the file tree may matter.
 - Use list_uploads, view_image, download_file, and read_file for user-uploaded files and generated artifacts.

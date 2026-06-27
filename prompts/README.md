@@ -68,6 +68,12 @@ secrets in the paired OmniDoer Control Client, not in Handex or the web LLM
 transcript; Handex only sees public request metadata and can deny stale requests
 with `omnidoer_request_deny`.
 
+OmniDoer Control Client task queues are exposed through
+`omnidoer_task_submit`, `omnidoer_task_list`, `omnidoer_task_complete`, and
+`omnidoer_task_cancel`. These tools are for reviewed coordination with a paired
+client; task text is not a secret transport, and credentials should still use
+the credential request tools.
+
 Workspace uploads are exposed through the project page and the `list_uploads`
 tool. Uploaded files live under `.handex_uploads/` inside the workspace, and
 the Single-Step Agent Prompt includes a compact inventory so the LLM can ask

@@ -67,6 +67,26 @@ class RunnerTests(unittest.TestCase):
                             "secret_exposed_to_model": False,
                         }
                     ]))
+                elif argv[:2] == ["control", "submit-task"]:
+                    print("queued task task_test; Codex can read it with control.next_user_task")
+                elif argv[:2] == ["control", "tasks"]:
+                    print(json.dumps([
+                        {
+                            "task_id": "task_test",
+                            "status": "pending",
+                            "text": "queued task\\npassword=must-not-appear",
+                            "api_token": "must-not-appear",
+                        },
+                        {
+                            "task_id": "task_done",
+                            "status": "completed",
+                            "text": "old task",
+                        },
+                    ]))
+                elif argv[:2] == ["control", "complete-task"]:
+                    print(f"completed {argv[2]}")
+                elif argv[:2] == ["control", "cancel-task"]:
+                    print(f"cancelled {argv[2]}")
                 elif argv[:2] == ["control", "wait-request"]:
                     print("request_id=req_test")
                     print("request_completed=true")
@@ -251,6 +271,54 @@ class RunnerTests(unittest.TestCase):
         self.assertFalse(save_payload["secret_exposed_to_model"])
         self.assertEqual(deny_payload["status"], "denied")
         self.assertFalse(deny_payload["secret_exposed_to_model"])
+
+    def test_omnidoer_task_tools_wrap_control_queue_and_redact(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            script = self.write_fake_omnidoer(Path(tmp))
+            runner.settings = self.fake_omnidoer_settings(script)
+
+            submitted = registry.run(
+                {
+                    "tool": "omnidoer_task_submit",
+                    "args": {"task": "review this queue item\napi_token=must-not-appear"},
+                },
+                tmp,
+                "safe",
+            )
+            listed = registry.run({"tool": "omnidoer_task_list", "args": {"task_id": "task_test"}}, tmp, "safe")
+            pending = registry.run({"tool": "omnidoer_task_list", "args": {"status": "pending", "limit": 1}}, tmp, "safe")
+            completed = registry.run({"tool": "omnidoer_task_complete", "args": {"task_id": "task_test"}}, tmp, "safe")
+            cancelled = registry.run({"tool": "omnidoer_task_cancel", "args": {"task_id": "task_test"}}, tmp, "safe")
+            preview = registry.preview(
+                {"tool": "omnidoer_task_submit", "args": {"task": "review this queue item\napi_token=must-not-appear"}},
+                tmp,
+                "safe",
+            )
+
+        submit_payload = json.loads(submitted.stdout)
+        list_payload = json.loads(listed.stdout)
+        pending_payload = json.loads(pending.stdout)
+        complete_payload = json.loads(completed.stdout)
+        cancel_payload = json.loads(cancelled.stdout)
+        self.assertEqual(submit_payload["task_id"], "task_test")
+        self.assertIn("omnidoer_task_list", submit_payload["next_tools"])
+        self.assertNotIn("must-not-appear", submitted.stdout)
+        self.assertNotIn("must-not-appear", submitted.final_command)
+        self.assertNotIn("must-not-appear", preview.final_command)
+        self.assertEqual(list_payload["task_id"], "task_test")
+        self.assertEqual(list_payload["api_token"], "[REDACTED]")
+        self.assertNotIn("must-not-appear", listed.stdout)
+        self.assertEqual(len(pending_payload), 1)
+        self.assertEqual(pending_payload[0]["task_id"], "task_test")
+        self.assertEqual(complete_payload["task_id"], "task_test")
+        self.assertEqual(complete_payload["status"], "completed")
+        self.assertEqual(cancel_payload["task_id"], "task_test")
+        self.assertEqual(cancel_payload["status"], "cancelled")
+
+    def test_omnidoer_task_id_validation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ToolError):
+                registry.run({"tool": "omnidoer_task_cancel", "args": {"task_id": "../bad"}}, tmp, "safe")
 
     def test_omnidoer_git_safe_mode_blocks_mutating_subcommands(self):
         with tempfile.TemporaryDirectory() as tmp:
