@@ -24,3 +24,8 @@ reviewed copy/paste agent loop.
 The context snapshot is also exposed separately on the project page and through
 the `context_pack` tool, so the LLM can refresh orientation without spending
 several turns on `pwd`, `git status`, `ls`, and `AGENTS.md` reads.
+
+The project page also exposes a Continuation Transcript. It packages project
+metadata, goal, summary, workspace context, recent summaries, and recent
+tool/project events into a copyable prompt for resuming the same Hand Loop in
+another web LLM session.

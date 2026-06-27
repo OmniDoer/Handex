@@ -50,6 +50,7 @@ Each project stores:
 - Settings
 - Logs
 - Summary history
+- Continuation transcript for resuming with another web LLM
 
 Projects can be created, edited, entered, and deleted from the web UI.
 
@@ -270,6 +271,22 @@ return only valid JSON that matches the Tool Command schema.
 The project page provides a Summary Prompt. The user copies it to the web LLM,
 pastes the returned Summary into Handex, and saves it. Handex records every
 saved Summary as history and supports rollback.
+
+## Continuation Transcript
+
+Handex projects also expose a Continuation Transcript. This is a compact,
+copyable project record for switching web LLMs, resuming after a browser tab is
+lost, or handing the same task to another human.
+
+The transcript includes project metadata, active goal, current summary, project
+state, the current Workspace Context Pack, recent summary history, and recent
+tool/project events. It tells the next LLM to continue the same
+one-tool-command-at-a-time Hand Loop and not to re-run historical commands just
+because they appear in the record.
+
+Transcript redaction is heuristic. Handex redacts common secret-like lines and
+token patterns before rendering the transcript, but users should still avoid
+printing raw credentials in ordinary shell commands.
 
 ## Safe Mode and YOLO Mode
 

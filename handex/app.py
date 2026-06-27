@@ -41,6 +41,7 @@ from .prompts import (
     build_tool_result_prompt,
 )
 from .tools.runner import ToolError, ToolResult, preview_command, registry
+from .transcript import build_project_transcript
 from .vault import VaultError, create_item as vault_create_item, delete_item as vault_delete_item, list_items as vault_list_items, vault_enabled
 
 
@@ -86,14 +87,18 @@ def project_page_context(project: dict[str, Any], **extra: Any) -> dict[str, Any
     except Exception as exc:
         vault_credentials = []
         vault_error = f"{type(exc).__name__}: {exc}"
+    context_pack = build_context_pack(project.get("workspace_path") or ".", max_chars=12000)
+    summaries = list_summaries(int(project["id"]))
+    logs = list_logs(int(project["id"]))
     context = {
         "project": project,
         "start_prompt": build_start_prompt(project),
         "agent_prompt": build_agent_fallback_prompt(project),
-        "context_pack": build_context_pack(project.get("workspace_path") or ".", max_chars=12000),
+        "context_pack": context_pack,
+        "transcript_prompt": build_project_transcript(project, summaries, logs, context_pack, max_chars=24000),
         "summary_prompt": build_summary_prompt(project),
-        "summaries": list_summaries(int(project["id"])),
-        "logs": list_logs(int(project["id"])),
+        "summaries": summaries,
+        "logs": logs,
         "skills": list_skills(),
         "vault_credentials": vault_credentials,
         "vault_error": vault_error,
@@ -290,6 +295,13 @@ def agent_prompt(project_id: int, _: None = Depends(require_auth)) -> str:
 def context_prompt(project_id: int, _: None = Depends(require_auth)) -> str:
     project = project_or_404(project_id)
     return build_context_pack(project.get("workspace_path") or ".", max_chars=16000)
+
+
+@app.get("/projects/{project_id}/prompt/transcript", response_class=PlainTextResponse)
+def transcript_prompt(project_id: int, _: None = Depends(require_auth)) -> str:
+    project = project_or_404(project_id)
+    context_pack = build_context_pack(project.get("workspace_path") or ".", max_chars=12000)
+    return build_project_transcript(project, list_summaries(project_id), list_logs(project_id, limit=80), context_pack, max_chars=32000)
 
 
 @app.post("/projects/{project_id}/parse", response_class=HTMLResponse)
