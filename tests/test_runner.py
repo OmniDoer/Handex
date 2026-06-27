@@ -147,6 +147,8 @@ class RunnerTests(unittest.TestCase):
                     print(json.dumps({"status": "taken_over", "request_id": argv[2]}))
                 elif argv[:2] == ["control", "release"]:
                     print(json.dumps({"status": "released", "request_id": argv[2]}))
+                elif argv[:2] == ["control", "approve"]:
+                    print(json.dumps({"status": "approved", "request_id": argv[2]}))
                 elif argv[:2] == ["audit", "tail"]:
                     print("audit event ok")
                 elif argv[:2] == ["audit", "verify"]:
@@ -259,6 +261,16 @@ class RunnerTests(unittest.TestCase):
                         "message_id": argv[argv.index("--message-id") + 1] if "--message-id" in argv else "msg_record",
                         "record_type": argv[-2],
                         "text": argv[-1],
+                    }))
+                elif argv[:2] == ["control", "chat-run-next"]:
+                    print(json.dumps({
+                        "status": "processed",
+                        "message_id": "msg_processed",
+                        "codex_bin": argv[argv.index("--codex-bin") + 1] if "--codex-bin" in argv else None,
+                        "cwd": argv[argv.index("--cwd") + 1] if "--cwd" in argv else None,
+                        "thread_id": argv[argv.index("--thread-id") + 1] if "--thread-id" in argv else None,
+                        "codex_args": [argv[index + 1] for index, value in enumerate(argv) if value == "--codex-arg"],
+                        "allow_detached_thread_resume": "--allow-detached-thread-resume" in argv,
                     }))
                 elif argv[:2] == ["control", "wait-request"]:
                     print("request_id=req_test")
@@ -467,6 +479,20 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(deny_payload["status"], "denied")
         self.assertFalse(deny_payload["secret_exposed_to_model"])
 
+    def test_omnidoer_request_approve_is_yolo_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            script = self.write_fake_omnidoer(Path(tmp))
+            runner.settings = self.fake_omnidoer_settings(script)
+
+            with self.assertRaises(ToolError):
+                registry.run({"tool": "omnidoer_request_approve", "args": {"request_id": "req_test"}}, tmp, "safe")
+            approved = registry.run({"tool": "omnidoer_request_approve", "args": {"request_id": "req_test"}}, tmp, "yolo")
+
+        payload = json.loads(approved.stdout)
+        self.assertEqual(payload["request_id"], "req_test")
+        self.assertEqual(payload["status"], "approved")
+        self.assertFalse(payload["secret_exposed_to_model"])
+
     def test_omnidoer_task_tools_wrap_control_queue_and_redact(self):
         with tempfile.TemporaryDirectory() as tmp:
             script = self.write_fake_omnidoer(Path(tmp))
@@ -592,6 +618,40 @@ class RunnerTests(unittest.TestCase):
                 registry.run({"tool": "omnidoer_chat_next", "args": {"claim": True}}, tmp, "safe")
             with self.assertRaises(ToolError):
                 registry.run({"tool": "omnidoer_chat_delta", "args": {"message_id": "../bad", "delta": "x"}}, tmp, "safe")
+
+    def test_omnidoer_chat_run_next_is_yolo_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            script = self.write_fake_omnidoer(Path(tmp))
+            runner.settings = self.fake_omnidoer_settings(script)
+            command = {
+                "tool": "omnidoer_chat_run_next",
+                "args": {
+                    "codex_bin": "/usr/local/bin/codex",
+                    "chat_cwd": "/opt/handex",
+                    "thread_id": "thread_1",
+                    "codex_args": ["--model", "gpt-5"],
+                    "allow_detached_thread_resume": True,
+                },
+            }
+
+            with self.assertRaises(ToolError):
+                registry.run(command, tmp, "safe")
+            preview = registry.preview(command, tmp, "yolo")
+            rejected_preview = registry.preview({"tool": "omnidoer_chat_run_next", "args": {"codex_args": ["--api-key", "must-not-appear"]}}, tmp, "yolo")
+            result = registry.run(command, tmp, "yolo")
+            with self.assertRaises(ToolError):
+                registry.run({"tool": "omnidoer_chat_run_next", "args": {"codex_args": ["--api-key", "must-not-appear"]}}, tmp, "yolo")
+
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["status"], "processed")
+        self.assertEqual(payload["message_id"], "msg_processed")
+        self.assertEqual(payload["codex_bin"], "/usr/local/bin/codex")
+        self.assertEqual(payload["cwd"], "/opt/handex")
+        self.assertEqual(payload["thread_id"], "thread_1")
+        self.assertEqual(payload["codex_args"], ["--model", "gpt-5"])
+        self.assertTrue(payload["allow_detached_thread_resume"])
+        self.assertIn("--allow-detached-thread-resume", preview.final_command)
+        self.assertNotIn("must-not-appear", rejected_preview.final_command)
 
     def test_omnidoer_diagnostic_tools_wrap_public_commands(self):
         with tempfile.TemporaryDirectory() as tmp:

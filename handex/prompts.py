@@ -34,6 +34,7 @@ TOOL_NAMES = [
     "omnidoer_request_status",
     "omnidoer_request_wait",
     "omnidoer_request_deny",
+    "omnidoer_request_approve",
     "omnidoer_task_submit",
     "omnidoer_task_list",
     "omnidoer_task_complete",
@@ -47,6 +48,7 @@ TOOL_NAMES = [
     "omnidoer_chat_delta",
     "omnidoer_chat_complete",
     "omnidoer_chat_record",
+    "omnidoer_chat_run_next",
     "omnidoer_doctor",
     "omnidoer_control_status",
     "omnidoer_control_devices",
@@ -151,7 +153,7 @@ DEFAULT_TOOL_PROTOCOL = """When you need Linux tools, output exactly one Tool Co
 
 Schema:
 {
-  "tool": "shell | background_shell | python | read_file | write_file | append_file | replace_file | delete_file | list_files | search_files | grep | git | omnidoer_credential_request | omnidoer_credential_list | omnidoer_vault_unlock | omnidoer_credential_save_request | omnidoer_request_status | omnidoer_request_wait | omnidoer_request_deny | omnidoer_task_submit | omnidoer_task_list | omnidoer_task_complete | omnidoer_task_cancel | omnidoer_chat_messages | omnidoer_chat_next | omnidoer_chat_send | omnidoer_chat_reply | omnidoer_chat_log_user | omnidoer_chat_start | omnidoer_chat_delta | omnidoer_chat_complete | omnidoer_chat_record | omnidoer_doctor | omnidoer_control_status | omnidoer_control_devices | omnidoer_control_sessions | omnidoer_control_tunnel_info | omnidoer_control_security_status | omnidoer_control_sync_status | omnidoer_control_revoke_device | omnidoer_control_revoke_session | omnidoer_control_enable_sync | omnidoer_request_challenge | omnidoer_request_takeover | omnidoer_request_release | omnidoer_audit_tail | omnidoer_audit_verify | omnidoer_policy_test | omnidoer_telegram_status | omnidoer_console_dry_run | omnidoer_upgrade_dry_run | omnidoer_mcp_self_test | omnidoer_heartbeat_status | omnidoer_heartbeat_tasks | omnidoer_heartbeat_add_task | omnidoer_heartbeat_remove_task | omnidoer_heartbeat_enable | omnidoer_heartbeat_disable | omnidoer_heartbeat_run_once | omnidoer_browser_open | omnidoer_git | omnidoer_github_api | git_bootstrap | apply_patch | list_skills | read_skill | read_skill_file | skill_pack | list_vault_credentials | vault_list | vault_run | capability_report | capability_search | context_pack | list_uploads | download_file | view_image | recent_results | tool_batch | update_plan | plan_status | job_status | job_stop | plugin_list | plugin_run",
+  "tool": "shell | background_shell | python | read_file | write_file | append_file | replace_file | delete_file | list_files | search_files | grep | git | omnidoer_credential_request | omnidoer_credential_list | omnidoer_vault_unlock | omnidoer_credential_save_request | omnidoer_request_status | omnidoer_request_wait | omnidoer_request_deny | omnidoer_request_approve | omnidoer_task_submit | omnidoer_task_list | omnidoer_task_complete | omnidoer_task_cancel | omnidoer_chat_messages | omnidoer_chat_next | omnidoer_chat_send | omnidoer_chat_reply | omnidoer_chat_log_user | omnidoer_chat_start | omnidoer_chat_delta | omnidoer_chat_complete | omnidoer_chat_record | omnidoer_chat_run_next | omnidoer_doctor | omnidoer_control_status | omnidoer_control_devices | omnidoer_control_sessions | omnidoer_control_tunnel_info | omnidoer_control_security_status | omnidoer_control_sync_status | omnidoer_control_revoke_device | omnidoer_control_revoke_session | omnidoer_control_enable_sync | omnidoer_request_challenge | omnidoer_request_takeover | omnidoer_request_release | omnidoer_audit_tail | omnidoer_audit_verify | omnidoer_policy_test | omnidoer_telegram_status | omnidoer_console_dry_run | omnidoer_upgrade_dry_run | omnidoer_mcp_self_test | omnidoer_heartbeat_status | omnidoer_heartbeat_tasks | omnidoer_heartbeat_add_task | omnidoer_heartbeat_remove_task | omnidoer_heartbeat_enable | omnidoer_heartbeat_disable | omnidoer_heartbeat_run_once | omnidoer_browser_open | omnidoer_git | omnidoer_github_api | git_bootstrap | apply_patch | list_skills | read_skill | read_skill_file | skill_pack | list_vault_credentials | vault_list | vault_run | capability_report | capability_search | context_pack | list_uploads | download_file | view_image | recent_results | tool_batch | update_plan | plan_status | job_status | job_stop | plugin_list | plugin_run",
   "args": {},
   "cwd": ".",
   "mode": "safe",
@@ -173,6 +175,7 @@ Examples:
 {"tool":"omnidoer_request_status","args":{"request_id":"req_example"},"mode":"safe","reason":"check public status for a Control Client request"}
 {"tool":"omnidoer_request_wait","args":{"request_id":"req_example","wait_timeout":"30s"},"mode":"safe","reason":"wait briefly for the user to finish a Control Client request"}
 {"tool":"omnidoer_request_deny","args":{"request_id":"req_example"},"mode":"safe","reason":"cancel a no-longer-needed Control Client request"}
+{"tool":"omnidoer_request_approve","args":{"request_id":"req_example"},"mode":"yolo","reason":"approve a reviewed Control Client request after checking its target and impact"}
 {"tool":"omnidoer_task_submit","args":{"task":"Please review the staged Handex change and report whether it looks ready."},"mode":"safe","reason":"send a reviewed task to the paired OmniDoer Control Client queue"}
 {"tool":"omnidoer_task_list","args":{"status":"pending","limit":10},"mode":"safe","reason":"inspect pending OmniDoer Control Client tasks"}
 {"tool":"omnidoer_task_cancel","args":{"task_id":"task_example"},"mode":"safe","reason":"cancel a no-longer-needed Control Client task"}
@@ -183,6 +186,7 @@ Examples:
 {"tool":"omnidoer_chat_start","args":{"reply_to":"msg_example","source":"handex"},"mode":"safe","reason":"start a streaming assistant chat response"}
 {"tool":"omnidoer_chat_delta","args":{"message_id":"msg_example","delta":"Partial response text."},"mode":"safe","reason":"append a reviewed chat response delta"}
 {"tool":"omnidoer_chat_complete","args":{"message_id":"msg_example"},"mode":"safe","reason":"complete a streaming chat response"}
+{"tool":"omnidoer_chat_run_next","args":{"chat_cwd":"/opt/handex","thread_id":"thread_example","codex_args":["--model","gpt-5"]},"mode":"yolo","reason":"run one reviewed OmniDoer chat runner pass for a queued message"}
 {"tool":"omnidoer_doctor","args":{},"mode":"safe","reason":"check OmniDoer runtime readiness"}
 {"tool":"omnidoer_control_status","args":{},"mode":"safe","reason":"inspect OmniDoer Control Client status"}
 {"tool":"omnidoer_control_sync_status","args":{"thread_id":"thread_example"},"mode":"safe","reason":"inspect Codex thread sync status"}
@@ -230,12 +234,14 @@ Vault rules:
 - omnidoer_vault_unlock verifies the configured OmniDoer vault and passphrase file; it never returns the passphrase.
 - omnidoer_credential_save_request stores a fulfilled credential request into the configured OmniDoer vault without returning plaintext secrets.
 - omnidoer_request_status and omnidoer_request_wait return public request metadata only; use omnidoer_request_deny to cancel a stale request.
+- omnidoer_request_approve is YOLO-only because it approves a Control Client request and may unblock a user-approved action.
 - omnidoer_task_submit, omnidoer_task_list, omnidoer_task_complete, and omnidoer_task_cancel bridge OmniDoer Control Client task queues; task text is user-visible coordination, not a place for secrets.
 - omnidoer_chat_* tools bridge OmniDoer Control Client chat/transcript flows; chat text is visible coordination, not a place for secrets.
+- omnidoer_chat_run_next is YOLO-only because it can claim a chat message and launch Codex; do not pass secrets through codex_args.
 - omnidoer_doctor, omnidoer_control_*, omnidoer_audit_*, omnidoer_policy_test, omnidoer_telegram_status, omnidoer_console_dry_run, omnidoer_upgrade_dry_run, and omnidoer_mcp_self_test expose reviewed diagnostics, dry-runs, and self-tests; omnidoer_browser_open requires HTTPS in Safe Mode.
 - omnidoer_control_revoke_device, omnidoer_control_revoke_session, omnidoer_control_enable_sync, omnidoer_request_challenge, omnidoer_request_takeover, and omnidoer_request_release are YOLO-only because they mutate Control Client access, sync, or request ownership.
 - omnidoer_heartbeat_status and omnidoer_heartbeat_tasks are Safe Mode reads; heartbeat add/remove/enable/disable/run-once are YOLO-only because they mutate persistent scheduler state or enqueue chat work.
-- OmniDoer commands that generate pairing credentials, start persistent servers, launch real Codex sessions, run agents, initialize installs, or perform non-dry-run upgrades are intentionally not exposed as normal Safe tools; use a reviewed shell/background_shell command only after checking the impact.
+- OmniDoer commands that generate pairing credentials, accept raw secret input, start persistent servers/runners, launch arbitrary real Codex sessions, run agents, initialize installs, or perform non-dry-run upgrades are intentionally not exposed as normal Safe tools; use a reviewed shell/background_shell command only after checking the impact.
 - omnidoer_git and omnidoer_github_api use the server-configured OmniDoer vault bridge; Safe Mode permits only read-only ls-remote and GitHub GET.
 - Never ask Handex to print passwords, tokens, private keys, or decrypted secrets.
 - For credentialed git or GitHub work, prefer omnidoer_git or omnidoer_github_api; use reviewed shell only for credentialed flows those tools do not cover.
@@ -317,10 +323,11 @@ Operating rules:
 - Use omnidoer_credential_list to discover existing OmniDoer vault credentials before requesting a new one.
 - Use omnidoer_task_submit and omnidoer_task_list when coordination with the paired OmniDoer Control Client task queue is useful; never put passwords, tokens, or private keys in task text.
 - Use omnidoer_chat_messages, omnidoer_chat_next, and omnidoer_chat_reply when the paired OmniDoer Control Client chat stream is part of the task; never put passwords, tokens, or private keys in chat text.
+- Use omnidoer_chat_run_next only in YOLO Mode after checking the queued chat and runner arguments; it may launch Codex and consume quota.
 - Use omnidoer_doctor, omnidoer_control_status, audit/policy, and telegram status tools to diagnose OmniDoer readiness before assuming the paired runtime is broken.
 - Use omnidoer_console_dry_run, omnidoer_upgrade_dry_run, and omnidoer_mcp_self_test to inspect OmniDoer console, upgrade, and MCP readiness without launching Codex, installing files, or starting a persistent MCP server.
 - Use omnidoer_heartbeat_status and omnidoer_heartbeat_tasks to inspect the paired OmniDoer heartbeat scheduler; use heartbeat add/remove/enable/disable/run-once only in YOLO Mode after reviewing persistent scheduling impact.
-- Do not use normal Safe tools for OmniDoer pair/init/control serve/demo start/agent run/non-dry-run console/non-dry-run upgrade; those commands can create credentials, start services, or mutate runtime state and need explicit human review.
+- Do not use normal Safe tools for OmniDoer pair/init/control serve/demo start/agent run/input-secret/chat-runner/non-dry-run console/non-dry-run upgrade; those commands can create credentials, accept secrets, start services, or mutate runtime state and need explicit human review.
 - Use revoke/enable-sync/challenge/takeover/release tools only in YOLO Mode after a concrete human review of the target id and impact.
 - Use omnidoer_browser_open only for reviewed URLs; Safe Mode requires HTTPS.
 - Use omnidoer_git or omnidoer_github_api for reviewed Git/GitHub operations that need an existing OmniDoer vault credential.

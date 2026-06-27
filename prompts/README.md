@@ -67,6 +67,8 @@ after fulfillment with `omnidoer_credential_save_request`. The user enters
 secrets in the paired OmniDoer Control Client, not in Handex or the web LLM
 transcript; Handex only sees public request metadata and can deny stale requests
 with `omnidoer_request_deny`.
+`omnidoer_request_approve` is YOLO-only because it changes request state and
+can unblock a user-approved action.
 
 Configured OmniDoer vault metadata can be listed with
 `omnidoer_credential_list`, and the configured vault/passphrase file can be
@@ -87,6 +89,9 @@ OmniDoer Control Client chat/transcript flows are exposed through
 Safe Mode peeks at the next chat message with `--no-claim`; claiming requires
 YOLO Mode after review. Chat text is visible coordination, not a credential
 channel.
+`omnidoer_chat_run_next` is YOLO-only because it can claim a queued chat message
+and launch Codex for a one-shot runner pass. Persistent `chat-runner` remains a
+reviewed background command boundary rather than a normal tool.
 
 OmniDoer diagnostics and status commands are exposed through `omnidoer_doctor`,
 `omnidoer_control_status`, `omnidoer_control_devices`,
@@ -118,10 +123,10 @@ Mutating Control Client management commands are YOLO-only:
 them before invoking OmniDoer because they change device/session access, sync
 state, or request ownership.
 
-Pairing, `init`, `control serve`, `demo start`, `agent run`, non-dry-run
-`console`, and non-dry-run `upgrade` are intentionally not normal Safe tools
-because they can create credentials, start services, launch real agent work, or
-mutate runtime state.
+Pairing, `init`, `control serve`, `demo start`, `agent run`, `input-secret`,
+persistent `chat-runner`, non-dry-run `console`, and non-dry-run `upgrade` are
+intentionally not normal Safe tools because they can create credentials, accept
+secrets, start services, launch real agent work, or mutate runtime state.
 
 Workspace uploads are exposed through the project page and the `list_uploads`
 tool. Uploaded files live under `.handex_uploads/` inside the workspace, and

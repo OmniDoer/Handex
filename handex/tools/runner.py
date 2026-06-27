@@ -351,6 +351,8 @@ def preview_command(command: dict[str, Any]) -> str:
         return f"omnidoer control wait-request {args.get('request_id') or args.get('id') or ''}"
     if tool == "omnidoer_request_deny":
         return f"omnidoer control deny {args.get('request_id') or args.get('id') or ''}"
+    if tool == "omnidoer_request_approve":
+        return f"omnidoer control approve {args.get('request_id') or args.get('id') or ''}"
     if tool == "omnidoer_task_submit":
         task = str(args.get("task") or args.get("text") or "")
         return f"omnidoer control submit-task {shlex.quote(redact_context_text(task)[:80])}"
@@ -383,6 +385,30 @@ def preview_command(command: dict[str, Any]) -> str:
     if tool == "omnidoer_chat_record":
         text = str(args.get("text") or args.get("message") or "")
         return f"omnidoer control chat-record {args.get('record_type') or args.get('type') or ''} {shlex.quote(redact_context_text(text)[:80])}"
+    if tool == "omnidoer_chat_run_next":
+        preview_args = ["omnidoer", "control", "chat-run-next"]
+        if args.get("codex_bin"):
+            preview_args.extend(["--codex-bin", str(args.get("codex_bin"))])
+        if args.get("chat_cwd"):
+            preview_args.extend(["--cwd", str(args.get("chat_cwd"))])
+        if args.get("thread_id"):
+            preview_args.extend(["--thread-id", str(args.get("thread_id"))])
+        raw_codex_args = args.get("codex_args") or []
+        if isinstance(raw_codex_args, str):
+            try:
+                raw_codex_args = shlex.split(raw_codex_args)
+            except ValueError:
+                raw_codex_args = [raw_codex_args]
+        if isinstance(raw_codex_args, list):
+            redact_next = False
+            for item in raw_codex_args:
+                item_text = str(item)
+                sensitive = bool(SENSITIVE_OUTPUT_KEY_RE.search(item_text))
+                preview_args.extend(["--codex-arg", "[REDACTED]" if redact_next or sensitive else item_text])
+                redact_next = sensitive
+        if bool(args.get("allow_detached_thread_resume")):
+            preview_args.append("--allow-detached-thread-resume")
+        return " ".join(shlex.quote(item) for item in preview_args)
     if tool == "omnidoer_doctor":
         return "omnidoer doctor"
     if tool == "omnidoer_control_status":
@@ -816,6 +842,13 @@ def public_text_arg(args: dict[str, Any], key: str, tool: str, *, required: bool
     return value
 
 
+def single_line_public_arg(args: dict[str, Any], key: str, tool: str, *, max_len: int = 500) -> str:
+    value = public_text_arg(args, key, tool, max_len=max_len).strip()
+    if value and any(ord(char) < 32 for char in value):
+        raise ToolError(f"{tool} args.{key} must be a single line")
+    return value
+
+
 def heartbeat_task_id_arg(args: dict[str, Any], tool: str) -> str:
     task_id = str(args.get("task_id") or args.get("heartbeat_task_id") or args.get("id") or "")
     if not task_id:
@@ -839,6 +872,12 @@ def string_list_arg(args: dict[str, Any], key: str, tool: str) -> list[str]:
         if "\x00" in item or any(ord(char) < 32 for char in item):
             raise ToolError(f"{tool} args.{key} contains an invalid argument")
     return items
+
+
+def reject_sensitive_cli_args(items: list[str], tool: str, key: str) -> None:
+    for item in items:
+        if SENSITIVE_OUTPUT_KEY_RE.search(item):
+            raise ToolError(f"{tool} args.{key} must not contain password, token, secret, or API key arguments")
 
 
 def require_yolo(mode: str, tool: str, reason: str) -> None:
@@ -1005,6 +1044,21 @@ def run_omnidoer_request_deny(command: dict[str, Any], workspace: Path, mode: st
     status = "denied" if result.exit_code == 0 else "error"
     output = json.dumps({"request_id": request_id, "status": status, "secret_exposed_to_model": False}, ensure_ascii=False, indent=2)
     return ToolResult("omnidoer_request_deny", command, mode, result.cwd, result.final_command, result.exit_code, output + "\n", result.stderr)
+
+
+def run_omnidoer_request_approve(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    require_yolo(mode, "omnidoer_request_approve", "approving a request changes Control Client request state and can unblock a user-approved action")
+    args = command_args(command)
+    request_id = request_id_arg(args, "omnidoer_request_approve")
+    result = run_omnidoer_public_command(command, workspace, mode, "omnidoer_request_approve", [*omnidoer_base_argv(), "control", "approve", request_id])
+    payload = parse_public_json_or_kv(result.stdout)
+    if not isinstance(payload, dict):
+        payload = {"result": payload}
+    payload.setdefault("request_id", request_id)
+    if result.exit_code == 0:
+        payload.setdefault("status", "approved")
+    payload["secret_exposed_to_model"] = False
+    return ToolResult("omnidoer_request_approve", command, mode, result.cwd, result.final_command, result.exit_code, json.dumps(payload, ensure_ascii=False, indent=2) + "\n", result.stderr)
 
 
 def run_omnidoer_task_submit(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
@@ -1276,6 +1330,28 @@ def run_omnidoer_chat_record(command: dict[str, Any], workspace: Path, mode: str
         payload.setdefault("message_id", message_id)
     output = public_json(payload)
     return ToolResult("omnidoer_chat_record", command, mode, result.cwd, redact_command_string(result.final_command), result.exit_code, output + "\n", result.stderr)
+
+
+def run_omnidoer_chat_run_next(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
+    require_yolo(mode, "omnidoer_chat_run_next", "running the chat runner can claim a message and launch Codex")
+    args = command_args(command)
+    argv = [*omnidoer_base_argv(), "control", "chat-run-next"]
+    codex_bin = single_line_public_arg(args, "codex_bin", "omnidoer_chat_run_next")
+    if codex_bin:
+        argv.extend(["--codex-bin", codex_bin])
+    chat_cwd = single_line_public_arg(args, "chat_cwd", "omnidoer_chat_run_next")
+    if chat_cwd:
+        argv.extend(["--cwd", chat_cwd])
+    thread_id = plain_token_arg(args, "thread_id", "omnidoer_chat_run_next")
+    if thread_id:
+        argv.extend(["--thread-id", thread_id])
+    codex_args = string_list_arg(args, "codex_args", "omnidoer_chat_run_next")
+    reject_sensitive_cli_args(codex_args, "omnidoer_chat_run_next", "codex_args")
+    for item in codex_args:
+        argv.extend(["--codex-arg", item])
+    if bool(args.get("allow_detached_thread_resume")):
+        argv.append("--allow-detached-thread-resume")
+    return run_omnidoer_public_command(command, workspace, mode, "omnidoer_chat_run_next", argv)
 
 
 def run_omnidoer_doctor(command: dict[str, Any], workspace: Path, mode: str) -> ToolResult:
@@ -2479,6 +2555,7 @@ registry.register("omnidoer_credential_save_request", run_omnidoer_credential_sa
 registry.register("omnidoer_request_status", run_omnidoer_request_status)
 registry.register("omnidoer_request_wait", run_omnidoer_request_wait)
 registry.register("omnidoer_request_deny", run_omnidoer_request_deny)
+registry.register("omnidoer_request_approve", run_omnidoer_request_approve)
 registry.register("omnidoer_task_submit", run_omnidoer_task_submit)
 registry.register("omnidoer_task_list", run_omnidoer_task_list)
 registry.register("omnidoer_task_complete", run_omnidoer_task_complete)
@@ -2492,6 +2569,7 @@ registry.register("omnidoer_chat_start", run_omnidoer_chat_start)
 registry.register("omnidoer_chat_delta", run_omnidoer_chat_delta)
 registry.register("omnidoer_chat_complete", run_omnidoer_chat_complete)
 registry.register("omnidoer_chat_record", run_omnidoer_chat_record)
+registry.register("omnidoer_chat_run_next", run_omnidoer_chat_run_next)
 registry.register("omnidoer_doctor", run_omnidoer_doctor)
 registry.register("omnidoer_control_status", run_omnidoer_control_status)
 registry.register("omnidoer_control_devices", run_omnidoer_control_devices)

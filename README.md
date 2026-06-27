@@ -106,6 +106,7 @@ Built-in tools:
 - `omnidoer_request_status`
 - `omnidoer_request_wait`
 - `omnidoer_request_deny`
+- `omnidoer_request_approve`
 - `omnidoer_task_submit`
 - `omnidoer_task_list`
 - `omnidoer_task_complete`
@@ -119,6 +120,7 @@ Built-in tools:
 - `omnidoer_chat_delta`
 - `omnidoer_chat_complete`
 - `omnidoer_chat_record`
+- `omnidoer_chat_run_next`
 - `omnidoer_doctor`
 - `omnidoer_control_status`
 - `omnidoer_control_devices`
@@ -262,6 +264,8 @@ through Handex or the web LLM. Use `omnidoer_request_status` or
 `omnidoer_request_wait` to observe public completion state, and
 `omnidoer_credential_save_request` to store a fulfilled request into the
 configured OmniDoer vault. `omnidoer_request_deny` cancels a stale request.
+`omnidoer_request_approve` is YOLO-only because it changes Control Client
+request state and can unblock a user-approved action.
 
 `omnidoer_credential_list` lists configured OmniDoer vault credential metadata,
 and `omnidoer_vault_unlock` verifies the configured vault/passphrase file
@@ -279,6 +283,9 @@ transport; credentials should use the credential request tools instead.
 bridge OmniDoer's Control Client chat/transcript commands. Safe Mode peeks at
 the next message with `--no-claim`; claiming a message requires YOLO Mode after
 review. Chat text is treated as public coordination text, not a secret channel.
+`omnidoer_chat_run_next` is a YOLO-only one-shot runner for the next queued
+chat message; it can claim a message and launch Codex, so review queued chat
+state and runner arguments first.
 
 `omnidoer_doctor`, `omnidoer_control_status`,
 `omnidoer_control_devices`, `omnidoer_control_sessions`,
@@ -312,9 +319,9 @@ YOLO-only: `omnidoer_control_revoke_device`,
 `omnidoer_request_challenge`, `omnidoer_request_takeover`, and
 `omnidoer_request_release`. Safe Mode rejects them before invoking OmniDoer.
 OmniDoer commands that generate pairing credentials, initialize installs, start
-persistent services, launch real Codex sessions, or run autonomous agent tasks
-are intentionally left to reviewed shell/background commands instead of normal
-Safe tools.
+persistent services or runners, accept raw secret input, launch real Codex
+sessions, or run autonomous agent tasks are intentionally left to reviewed
+shell/background commands instead of normal Safe tools.
 
 `plugin_list` and `plugin_run` expose configured command plugins from
 `HANDEX_PLUGIN_ROOTS`. A plugin is a directory containing `plugin.json`; it
@@ -364,6 +371,8 @@ LLM how to behave like a coding agent inside the Hand Loop:
   reviewed human/device coordination
 - inspect and reply through the paired OmniDoer Control Client chat stream,
   including streaming response records
+- run a reviewed one-shot OmniDoer chat runner pass in YOLO Mode when using the
+  paired Codex runtime is intentional
 - inspect OmniDoer doctor/status/devices/sessions/tunnel/security/sync,
   audit, policy, and Telegram notification status without dropping to shell
 - preview OmniDoer console/upgrade behavior and run the MCP self-test without
@@ -554,6 +563,8 @@ The related tools are:
   Control Client requests
 - `omnidoer_request_wait`: wait briefly for a Control Client request to finish
 - `omnidoer_request_deny`: deny or cancel a no-longer-needed request
+- `omnidoer_request_approve`: approve a reviewed Control Client request; YOLO
+  Mode only
 - `omnidoer_task_submit`: submit reviewed task text to the paired OmniDoer
   Control Client queue
 - `omnidoer_task_list`: inspect public task queue metadata, optionally filtered
@@ -571,6 +582,8 @@ The related tools are:
 - `omnidoer_chat_complete`: complete a streaming assistant message
 - `omnidoer_chat_record`: record a typed chat event for audit or transcript
   continuity
+- `omnidoer_chat_run_next`: run one OmniDoer chat runner pass for the next
+  queued message; YOLO Mode only because it can claim chat and launch Codex
 - `omnidoer_doctor`: run OmniDoer runtime readiness diagnostics
 - `omnidoer_control_status`: inspect Control Client service status
 - `omnidoer_control_devices`: list paired devices
@@ -617,8 +630,9 @@ Use YOLO Mode after review for `push`, release creation, issue edits, workflow
 dispatches, or other mutating operations. Command output is still treated as
 heuristically redacted; do not ask tools to print raw tokens or passwords.
 Pairing, `init`, `control serve`, `demo start`, `agent run`, non-dry-run
-`console`, and non-dry-run `upgrade` are not exposed as normal Safe tools
-because they can create credentials, start services, or mutate runtime state.
+`console`, non-dry-run `upgrade`, `control input-secret`, and persistent
+`control chat-runner` are not exposed as normal Safe tools because they can
+create credentials, accept secrets, start services, or mutate runtime state.
 
 Credential requests are intentionally public-metadata-only. Handex can create,
 poll, wait for, or deny the request, but it never receives the plaintext
