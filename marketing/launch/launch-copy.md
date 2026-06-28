@@ -2,7 +2,19 @@
 
 ## Poster Copy
 
-### Square Poster
+### English
+
+**HANDEX**
+
+Keep shipping when agents are unavailable.
+
+Connect any web LLM to local tools: copy a prompt, review the command, run it, and return the result.
+
+Skills · Vault · GitHub · Context
+
+Copy -> Review -> Run -> Return
+
+### 中文
 
 **HANDEX**
 
@@ -10,29 +22,27 @@
 
 把网页模型接到本地工具：复制提示，审阅命令，执行，再把结果交回模型。
 
-Skills · Vault · GitHub · Context
+技能 · 保险柜 · 代码仓库 · 上下文
 
-Copy -> Review -> Run -> Return
+复制、审阅、执行、返回
 
-### X Card
+### 日本語
 
-**Handex**
+**HANDEX**
 
-Manual fallback for Codex-style work.
+自動エージェントが使えなくても、出荷を続ける。
 
-When quota runs out, keep the agent loop moving through reviewed copy-paste tool commands.
+ウェブモデルをローカルツールへ接続。プロンプトをコピーし、命令を確認し、実行して、結果をモデルへ戻す。
 
-Copy -> Review -> Run -> Return
+スキル · 保管庫 · リポジトリ · 文脈
 
-### Story Poster
+コピー、確認、実行、返す
 
-**额度耗尽，也不断线。**
+## Shared Poster Elements
 
-把代理循环交还给人：网页模型提出下一步，人审阅命令，本地工具执行，结果回到模型。
-
-Skills + Vault + GitHub Bridge
-
-Copy -> Review -> Run -> Return
+- QR target: `https://omnidoer.github.io/handex/`
+- GitHub badge: `github.com/OmniDoer/Handex`
+- Output directories: `final/en/`, `final/zh/`, `final/ja/`
 
 ## Short X Posts
 
@@ -44,6 +54,10 @@ Copy a prompt into any web LLM. Paste back one tool command. Review. Run locally
 
 Skills, Vault, GitHub bridge, context.
 
+https://omnidoer.github.io/handex/
+
+GitHub: https://github.com/OmniDoer/Handex
+
 ### Chinese
 
 发布 Handex：当 Codex 额度耗尽或不可用时，把 agent 循环降级成可审阅的手工模式。
@@ -52,7 +66,23 @@ Skills, Vault, GitHub bridge, context.
 
 Skills、Vault、GitHub、上下文都接上。
 
-### Ultra Short
+https://omnidoer.github.io/handex/
+
+GitHub: https://github.com/OmniDoer/Handex
+
+### Japanese
+
+Handex を公開しました。Codex 風の作業を、自動エージェントが使えない時でも続けるための手動フォールバックです。
+
+ウェブモデルが一手を出し、人が確認し、ローカルで実行し、結果を戻します。
+
+Skills、Vault、GitHub bridge、context。
+
+https://omnidoer.github.io/handex/
+
+GitHub: https://github.com/OmniDoer/Handex
+
+### Ultra Short English
 
 Handex is the manual fallback for Codex-style work: copy, review, run, return. Skills, Vault, GitHub bridge, local tools.
 
@@ -63,6 +93,6 @@ Built for the days when quota runs out but work still needs to ship.
 - `assets/handex-launch-bg-square.png`: image-gen square background.
 - `assets/handex-launch-bg-x-card.png`: image-gen X card background.
 - `assets/handex-launch-bg-story.png`: image-gen story background.
-- `final/handex-launch-poster-square.png`: final square launch poster.
-- `final/handex-launch-x-card.png`: final X-ready landscape card.
-- `final/handex-launch-story.png`: final vertical story poster.
+- `final/en/`: English square, X card, and vertical story poster.
+- `final/zh/`: Chinese square, X card, and vertical story poster.
+- `final/ja/`: Japanese square, X card, and vertical story poster.
