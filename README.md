@@ -922,8 +922,23 @@ For the default `482692.xyz` TLS deployment:
 curl --resolve 482692.xyz:17395:127.0.0.1 https://482692.xyz:17395/healthz
 ```
 
-The generated password is intentionally not committed. Read it directly from
-`/etc/handex/handex.env` on the server when administering Handex.
+The generated admin password is intentionally not committed. When Handex is
+installed with `scripts/install_systemd.sh`, the installer creates the initial
+password only once and stores it as `HANDEX_ADMIN_PASSWORD` in
+`/etc/handex/handex.env` on the server.
+
+To retrieve the default web login password on the server:
+
+```sh
+sudo sed -n 's/^HANDEX_ADMIN_PASSWORD=//p' /etc/handex/handex.env
+```
+
+If you change `HANDEX_ADMIN_PASSWORD` in `/etc/handex/handex.env`, restart the
+service before logging in with the new value:
+
+```sh
+sudo systemctl restart handex.service
+```
 
 ## Repository Layout
 
